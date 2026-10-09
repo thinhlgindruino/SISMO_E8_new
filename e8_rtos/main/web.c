@@ -2,7 +2,8 @@
  * web.c - Web server cấu hình tại http://192.168.10.100 (xem web.h)
  *
  *   GET  /          trang Settings (WIFI SETUP: SSID + Password + Submit)  - giống E8 cũ
- *   POST /settings  lưu WiFi vào NVS -> báo đã lưu -> ESP32 khởi động lại sau 2 s
+ *   POST /settings  lưu WiFi vào /spiffs/wifi.json -> tắt AP -> màn hình về trang 0 -> ESP32 khởi động lại
+ *   GET  /wifi.json xem file WiFi đã lưu (mật khẩu che ****)
  *   GET  /upload    trang Upload (chọn file firmware .bin)
  *   POST /update    nhận file .bin, ghi vào vùng OTA còn lại -> khởi động lại bằng firmware mới
  */
@@ -12,14 +13,14 @@
 #include "esp_log.h"
 #include "esp_http_server.h"
 #include "esp_ota_ops.h"
-#include "mang.h"
+#include "network.h"
 #include "web.h"
 
 static const char *TAG = "WEB";
 static httpd_handle_t server = NULL;
 
 // ---------------- Phần HTML chung (đầu trang + thanh menu) ----------------
-static const char *HTML_DAU =
+static const char *HTML_HEAD =
     "<!DOCTYPE html><html><head><meta charset='utf-8'>"
     "<meta name='viewport' content='width=device-width,initial-scale=1'>"
     "<title>Sismo E8</title><style>"
@@ -49,8 +50,8 @@ static const char *HTML_MENU_UPLOAD =
 static const char *HTML_SETTINGS =
     "<div class='noidung'><h2>DEVICE SETTINGS</h2><h3>WIFI SETUP</h3>"
     "<form method='post' action='/settings'>"
-    "<label>SSID:</label><input type='text' name='ssid' maxlength='32' autofocus>"
-    "<label>Password:</label><input type='password' name='password' maxlength='63'>"
+    "<label>SSID:</label><input type='text' name='ssid' maxlength='32' required autofocus>"
+    "<label>Password:</label><input type='password' name='password' maxlength='64'>"
     "<div class='nut'><input type='submit' value='Submit'></div>"
     "</form></div>";
 
@@ -70,31 +71,31 @@ static const char *HTML_UPLOAD =
     "x.setRequestHeader('Content-Type','application/octet-stream');x.send(f);return false;}"
     "</script>";
 
-static const char *HTML_CUOI = "</body></html>";
+static const char *HTML_TAIL = "</body></html>";
 
-static esp_err_t gui_trang(httpd_req_t *req, const char *menu, const char *than)
+static esp_err_t send_page(httpd_req_t *req, const char *menu, const char *content)
 {
     httpd_resp_set_type(req, "text/html; charset=utf-8");
-    httpd_resp_sendstr_chunk(req, HTML_DAU);
+    httpd_resp_sendstr_chunk(req, HTML_HEAD);
     httpd_resp_sendstr_chunk(req, menu);
-    httpd_resp_sendstr_chunk(req, than);
-    httpd_resp_sendstr_chunk(req, HTML_CUOI);
+    httpd_resp_sendstr_chunk(req, content);
+    httpd_resp_sendstr_chunk(req, HTML_TAIL);
     return httpd_resp_sendstr_chunk(req, NULL);
 }
 
-static esp_err_t gui_thong_bao(httpd_req_t *req, const char *noi_dung)
+static esp_err_t send_message(httpd_req_t *req, const char *text)
 {
-    char than[384];
-    snprintf(than, sizeof(than),
-             "<div class='noidung'><h2>DEVICE SETTINGS</h2><p class='thongbao'>%s</p></div>", noi_dung);
-    return gui_trang(req, HTML_MENU_SETTINGS, than);
+    char content[384];
+    snprintf(content, sizeof(content),
+             "<div class='noidung'><h2>DEVICE SETTINGS</h2><p class='thongbao'>%s</p></div>", text);
+    return send_page(req, HTML_MENU_SETTINGS, content);
 }
 
 // ---------------- Tab Settings ----------------
-static esp_err_t xu_ly_trang_chu(httpd_req_t *req) { return gui_trang(req, HTML_MENU_SETTINGS, HTML_SETTINGS); }
+static esp_err_t handle_root(httpd_req_t *req) { return send_page(req, HTML_MENU_SETTINGS, HTML_SETTINGS); }
 
 // Giải mã dữ liệu form: '+' -> ' ', "%XX" -> ký tự
-static void giai_ma_url(char *s)
+static void url_decode(char *s)
 {
     char *d = s;
     while (*s) {
@@ -109,78 +110,89 @@ static void giai_ma_url(char *s)
 }
 
 // Chuỗi an toàn để chèn vào HTML (tránh tên WiFi có ký tự < > & ")
-static void an_toan_html(const char *vao, char *ra, size_t n)
+static void html_escape(const char *src, char *dst, size_t n)
 {
     size_t j = 0;
-    for (size_t i = 0; vao[i] && j + 6 < n; i++) {
-        switch (vao[i]) {
-        case '<': j += snprintf(ra + j, n - j, "&lt;");   break;
-        case '>': j += snprintf(ra + j, n - j, "&gt;");   break;
-        case '&': j += snprintf(ra + j, n - j, "&amp;");  break;
-        case '"': j += snprintf(ra + j, n - j, "&quot;"); break;
-        default:  ra[j++] = vao[i];
+    for (size_t i = 0; src[i] && j + 6 < n; i++) {
+        switch (src[i]) {
+        case '<': j += snprintf(dst + j, n - j, "&lt;");   break;
+        case '>': j += snprintf(dst + j, n - j, "&gt;");   break;
+        case '&': j += snprintf(dst + j, n - j, "&amp;");  break;
+        case '"': j += snprintf(dst + j, n - j, "&quot;"); break;
+        default:  dst[j++] = src[i];
         }
     }
-    ra[j] = '\0';
+    dst[j] = '\0';
 }
 
-static esp_err_t xu_ly_luu_wifi(httpd_req_t *req)
+static esp_err_t handle_save_wifi(httpd_req_t *req)
 {
     char body[400];
-    int tong = 0;
-    if (req->content_len >= sizeof(body)) return gui_thong_bao(req, "Data too long.");
-    while (tong < (int)req->content_len) {
-        int r = httpd_req_recv(req, body + tong, req->content_len - tong);
+    int total = 0;
+    if (req->content_len >= sizeof(body)) return send_message(req, "Data too long.");
+    while (total < (int)req->content_len) {
+        int r = httpd_req_recv(req, body + total, req->content_len - total);
         if (r == HTTPD_SOCK_ERR_TIMEOUT) continue;
         if (r <= 0) return ESP_FAIL;
-        tong += r;
+        total += r;
     }
-    body[tong] = '\0';
+    body[total] = '\0';
 
-    char ssid[100] = "", mk[200] = "";
+    char ssid[100] = "", pass[200] = "";
     httpd_query_key_value(body, "ssid", ssid, sizeof(ssid));
-    httpd_query_key_value(body, "password", mk, sizeof(mk));
-    giai_ma_url(ssid);
-    giai_ma_url(mk);
+    httpd_query_key_value(body, "password", pass, sizeof(pass));
+    url_decode(ssid);
+    url_decode(pass);
 
-    size_t ls = strlen(ssid), lm = strlen(mk);
-    if (ls == 0 || ls > 32) return gui_thong_bao(req, "SSID must be 1 - 32 characters.<br><a href='/'>Back</a>");
-    if (lm != 0 && (lm < 8 || lm > 63))
-        return gui_thong_bao(req, "Password must be empty or 8 - 63 characters.<br><a href='/'>Back</a>");
+    // Submit = kết thúc cấu hình, dù mật khẩu đúng hay sai: lưu lại, TẮT AP, khởi động lại.
+    // Sai mật khẩu -> sau khi khởi động lại không vào được mạng -> OFFLINE.
+    // (Chỉ chặn SSID rỗng; ô SSID trên trang đã 'required' nên trình duyệt không cho gửi rỗng.)
+    ssid[32] = '\0';                        // SSID tối đa 32 ký tự, mật khẩu tối đa 64
+    pass[64] = '\0';
+    if (ssid[0] == '\0') return send_message(req, "Please enter the SSID.<br><a href='/'>Back</a>");
 
-    if (!mang_luu_wifi(ssid, mk)) return gui_thong_bao(req, "Save failed. Please try again.");
-
-    char ten[200], tb[320];
-    an_toan_html(ssid, ten, sizeof(ten));
-    snprintf(tb, sizeof(tb), "Saved. The device will restart and connect to <b>%s</b>.", ten);
-    gui_thong_bao(req, tb);
-    mang_khoi_dong_lai_sau(2000);           // đợi trang kịp gửi xong rồi mới reset
+    bool ok = net_save_wifi(ssid, pass);
+    char ssid_html[200], msg[320];
+    html_escape(ssid, ssid_html, sizeof(ssid_html));
+    if (ok) snprintf(msg, sizeof(msg), "Saved. The device will restart and connect to <b>%s</b>.", ssid_html);
+    else    snprintf(msg, sizeof(msg), "Save failed. The device will restart.");
+    send_message(req, msg);
+    net_finish_config_and_restart(1000);  // đợi trang kịp gửi xong -> tắt AP -> reset
     return ESP_OK;
 }
 
 // ---------------- Tab Upload (cập nhật firmware) ----------------
-static esp_err_t xu_ly_trang_upload(httpd_req_t *req) { return gui_trang(req, HTML_MENU_UPLOAD, HTML_UPLOAD); }
-
-static esp_err_t xu_ly_update(httpd_req_t *req)
+// GET /wifi.json : xem file WiFi đã lưu (mật khẩu che ****)
+static esp_err_t handle_view_json(httpd_req_t *req)
 {
-    const esp_partition_t *vung = esp_ota_get_next_update_partition(NULL);
-    if (!vung) { httpd_resp_sendstr(req, "No OTA partition."); return ESP_OK; }
-    if (req->content_len == 0 || req->content_len > vung->size) {
+    char buf[256];
+    int n = net_read_json(buf, sizeof(buf), true);
+    httpd_resp_set_type(req, "application/json");
+    return httpd_resp_sendstr(req, n > 0 ? buf : "{}");
+}
+
+static esp_err_t handle_upload_page(httpd_req_t *req) { return send_page(req, HTML_MENU_UPLOAD, HTML_UPLOAD); }
+
+static esp_err_t handle_update(httpd_req_t *req)
+{
+    const esp_partition_t *part = esp_ota_get_next_update_partition(NULL);
+    if (!part) { httpd_resp_sendstr(req, "No OTA partition."); return ESP_OK; }
+    if (req->content_len == 0 || req->content_len > part->size) {
         httpd_resp_sendstr(req, "Invalid file size.");
         return ESP_OK;
     }
 
     esp_ota_handle_t ota;
-    if (esp_ota_begin(vung, OTA_WITH_SEQUENTIAL_WRITES, &ota) != ESP_OK) {
+    if (esp_ota_begin(part, OTA_WITH_SEQUENTIAL_WRITES, &ota) != ESP_OK) {
         httpd_resp_sendstr(req, "Cannot start update.");
         return ESP_OK;
     }
-    ESP_LOGI(TAG, "Nhan firmware %u byte -> %s", (unsigned)req->content_len, vung->label);
+    ESP_LOGI(TAG, "Nhan firmware %u byte -> %s", (unsigned)req->content_len, part->label);
 
     char buf[1024];
-    size_t con_lai = req->content_len;
-    while (con_lai > 0) {
-        int r = httpd_req_recv(req, buf, con_lai < sizeof(buf) ? con_lai : sizeof(buf));
+    size_t remaining = req->content_len;
+    while (remaining > 0) {
+        int r = httpd_req_recv(req, buf, remaining < sizeof(buf) ? remaining : sizeof(buf));
         if (r == HTTPD_SOCK_ERR_TIMEOUT) continue;
         if (r <= 0) { esp_ota_abort(ota); return ESP_FAIL; }
         if (esp_ota_write(ota, buf, r) != ESP_OK) {
@@ -188,18 +200,18 @@ static esp_err_t xu_ly_update(httpd_req_t *req)
             httpd_resp_sendstr(req, "Write failed.");
             return ESP_OK;
         }
-        con_lai -= r;
+        remaining -= r;
     }
     if (esp_ota_end(ota) != ESP_OK) { httpd_resp_sendstr(req, "Invalid firmware file."); return ESP_OK; }
-    if (esp_ota_set_boot_partition(vung) != ESP_OK) { httpd_resp_sendstr(req, "Cannot set boot partition."); return ESP_OK; }
+    if (esp_ota_set_boot_partition(part) != ESP_OK) { httpd_resp_sendstr(req, "Cannot set boot partition."); return ESP_OK; }
 
     httpd_resp_sendstr(req, "Update OK. The device is restarting...");
     ESP_LOGI(TAG, "Cap nhat firmware xong -> khoi dong lai");
-    mang_khoi_dong_lai_sau(2000);
+    net_restart_after(2000);
     return ESP_OK;
 }
 
-void web_bat(void)
+void web_start(void)
 {
     if (server) return;
     httpd_config_t c = HTTPD_DEFAULT_CONFIG();
@@ -208,12 +220,21 @@ void web_bat(void)
     c.lru_purge_enable = true;
     if (httpd_start(&server, &c) != ESP_OK) { ESP_LOGE(TAG, "Khong mo duoc web server"); return; }
 
-    const httpd_uri_t ds[] = {
-        { .uri = "/",         .method = HTTP_GET,  .handler = xu_ly_trang_chu },
-        { .uri = "/settings", .method = HTTP_POST, .handler = xu_ly_luu_wifi },
-        { .uri = "/upload",   .method = HTTP_GET,  .handler = xu_ly_trang_upload },
-        { .uri = "/update",   .method = HTTP_POST, .handler = xu_ly_update },
+    const httpd_uri_t routes[] = {
+        { .uri = "/",         .method = HTTP_GET,  .handler = handle_root },
+        { .uri = "/settings", .method = HTTP_POST, .handler = handle_save_wifi },
+        { .uri = "/upload",   .method = HTTP_GET,  .handler = handle_upload_page },
+        { .uri = "/update",   .method = HTTP_POST, .handler = handle_update },
+        { .uri = "/wifi.json", .method = HTTP_GET, .handler = handle_view_json },
     };
-    for (size_t i = 0; i < sizeof(ds) / sizeof(ds[0]); i++) httpd_register_uri_handler(server, &ds[i]);
+    for (size_t i = 0; i < sizeof(routes) / sizeof(routes[0]); i++) httpd_register_uri_handler(server, &routes[i]);
     ESP_LOGI(TAG, "Web server da chay");
+}
+
+void web_stop(void)
+{
+    if (!server) return;
+    httpd_stop(server);
+    server = NULL;
+    ESP_LOGI(TAG, "Web server da dung");
 }

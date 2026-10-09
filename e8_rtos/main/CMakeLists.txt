@@ -1,2 +1,2 @@
-idf_component_register(SRCS "main.c" "hmi.c" "cm8.c" "dieu_khien.c" "nhat_ky.c" "cai_dat.c" "mang.c" "web.c"
+idf_component_register(SRCS "main.c" "hmi.c" "cm8.c" "control.c" "logger.c" "settings.c" "network.c" "web.c"
                        INCLUDE_DIRS ".")

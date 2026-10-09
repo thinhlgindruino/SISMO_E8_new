@@ -26,3 +26,10 @@ void hmi_ghi(uint16_t dia_chi, uint16_t gia_tri);   // ghi 1 biến lên màn h�
 
 // Lấy lần bấm +/- tiếp theo (giá trị 0x1000 màn hình báo về). false = không còn lần bấm nào.
 bool hmi_lay_cham_cuong_do(uint16_t *gia_tri);
+
+// Các lần bấm nút của phần cài đặt (Touch Returned Message 0x41, địa chỉ 0x1011..0x1013)
+// Nút Sismo (0x1012) còn được ESP32 tự đọc mỗi HMI_CHU_KY_SISMO_MS: màn hình chỉ báo 0x41 lúc THẢ TAY,
+// còn lúc đang giữ (longPress Repeat) giá trị tăng liên tục -> đọc thấy đổi = ngón tay đang giữ.
+typedef enum { SK_NGUON_BAO = 0, SK_NGUON_DOC = 1 } hmi_nguon_t;
+typedef struct { uint16_t dia_chi; uint16_t gia_tri; uint8_t nguon; } hmi_su_kien_t;
+bool hmi_lay_su_kien(hmi_su_kien_t *e, TickType_t cho);    // chờ tối đa 'cho' tick

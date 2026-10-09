@@ -31,6 +31,29 @@
                                         // thì ghi trả lại cường độ người dùng chọn.
 #define CHO_MAN_HINH_MS     600         // sau khi ghi trả cường độ, chờ màn hình cập nhật tối đa
 
+// ---------------- Cài đặt / WiFi (giai đoạn 09/10) ----------------
+#define TRANG_CHINH         1           // trang menu 4 nút
+#define TRANG_MAT_KHAU      26          // trang nhập mật khẩu cài đặt (0026)
+#define TRANG_CAI_DAT       27          // trang cài đặt OFFLINE / Configuration WIFI / ONLINE (0027)
+#define MAT_KHAU_CAI_DAT    "74700"
+#define MAT_KHAU_SO_KY_TU   5           // đủ 5 số: đúng thì vào cài đặt, sai thì bấm số thứ 6 sẽ xóa
+
+#define DC_PHIM_MAT_KHAU    0x1011      // phím trang mật khẩu: 0..9 = số, 10 = C
+#define DC_NUT_SISMO        0x1012      // chữ "Sismo" trên mọi trang (giữ = lặp)
+#define DC_NUT_CAI_DAT      0x1013      // nút OFFLINE / ONLINE trên trang cài đặt
+#define DC_SO_DAU_CHAM      0x1039      // số dấu * đang hiện (Icon 0403..0408 = 0..5 dấu)
+#define DC_TRANG_THAI_MANG  0x1040      // Icon nút: 0 OFFLINE, 1 Configuration WIFI, 2 ONLINE
+
+#define PHIM_TRONG          0xFFFF      // ESP32 ghi vào 0x1011 sau mỗi lần đọc được phím
+#define PHIM_C              10
+#define GIU_SISMO_MS        2000        // giữ "Sismo" 2 s -> vào trang mật khẩu
+#define NHA_TAY_MS          1200        // dự phòng: quá 1,2 s giá trị 0x1012 không đổi -> coi như đã thả tay
+                                        // (bình thường biết thả tay nhờ màn hình báo 0x41 lúc thả)
+#define BO_QUA_SAU_THA_MS   400         // sau khi thả tay, bỏ qua thay đổi còn sót của 0x1012
+
+#define UU_TIEN_CAI_DAT     3
+#define STACK_CAI_DAT       5120        // bật AP + web chạy trong task này -> cần nhiều stack hơn
+
 // ---------------- Task ----------------
 // Ưu tiên: số càng lớn càng được chạy trước. Task an toàn (điều khiển) cao nhất,
 // in log thấp nhất để không bao giờ làm chậm phần điều khiển.
@@ -53,6 +76,7 @@
 
 // ---------------- Gỡ lỗi ----------------
 #define IN_THONG_KE_TASK    1           // 1: mỗi 30 s in stack còn trống của từng task
+#define IN_SU_KIEN_SISMO    0           // 1: in mỗi lần thấy nút Sismo đổi (để đo lúc giữ) - chạy ổn thì đặt 0
 #define IN_DOI_CUONG_DO     0           // 1: in mỗi lần cường độ 0x1000 đổi (kèm thời gian) để chẩn đoán
 #define THU_TREO_TASK       0           // 1: sau 20 s cố tình làm task "hmi_hoi" bị treo
                                         //    để thử watchdog (NHỚ ĐỂ 0 khi dùng thật)

@@ -1,0 +1,3 @@
+C:/SISMO_E8_new/HMI_E8/Plugin/Page0011.cfb3
+C:/SISMO_E8_new/HMI_E8/Plugin/Page0026.cfb1
+C:/SISMO_E8_new/HMI_E8/Plugin/Page0027.cfb2

@@ -1,5 +1,5 @@
 ﻿button_0:0,0,130,80,0x0020,,,Page0002,button_0,Disable,Disable,0x0000,
-icon_0:0xFFFF,2,0x1000,2,0,138,600,586,0364_cuongdo_p0011_01.png,0395_cuongdo_p0011_32.png,softpng,,0,31,icon_0,Enable;
+icon_0:0xFFFF,2,0x100B,2,0,138,600,586,0364_cuongdo_p0011_01.png,0395_cuongdo_p0011_32.png,softpng,,0,31,icon_0,Enable;
 varAdj_0:40,740,140,80,0x1000,1,0,31,ushort,-,Stop,Repeat,,,varAdj_0,Enable,Disable,0x0000;
 varAdj_1:420,740,140,80,0x1000,1,0,31,ushort,+,Stop,Repeat,,,varAdj_0,Enable,Disable,0x0000;
 icon_1:0xFFFF,2,0x1001,2,244,825,110,70,0042_play.jpg,0043_pause.jpg,,,0,1,icon_1,Disable;

@@ -6,3 +6,11 @@ CONFIG_ESP_TASK_WDT_EN=y
 CONFIG_ESP_TASK_WDT_INIT=y
 CONFIG_ESP_TASK_WDT_TIMEOUT_S=3
 CONFIG_ESP_TASK_WDT_PANIC=y
+# Bang phan vung rieng (2 vung OTA cho tab Upload cua trang web)
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
+# Web server: cho phep header dai hon
+CONFIG_HTTPD_MAX_REQ_HDR_LEN=1024
+CONFIG_HTTPD_MAX_URI_LEN=512
+# Ngan xep mang (lwIP) chay o core 0, nhuong core 1 cho cac task dieu khien
+CONFIG_LWIP_TCPIP_TASK_AFFINITY_CPU0=y

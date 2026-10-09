@@ -6,7 +6,9 @@
  *   cm8             5      Modbus RTU với CM8 (UART1, GPIO32/33, 9600)
  *   hmi_nhan        5      nhận + giải mã khung từ màn hình (UART2, GPIO16/17, 115200)
  *   hmi_hoi         4      hỏi màn hình: biến mỗi 100 ms, trang mỗi 250 ms
+ *   cai_dat         3      chữ Sismo (chạm / giữ 3 s), mật khẩu, trang cài đặt WiFi
  *   nhat_ky         2      in log ra Monitor (các task khác gửi chuỗi qua hàng đợi)
+ *   (WiFi, web server cấu hình 192.168.10.100 chạy ở core 0 - xem mang.c, web.c)
  *
  *   Dữ liệu dùng chung: mutex (màn hình), critical section (CM8, điều khiển), queue (log).
  *   Task watchdog: task nào không báo "còn sống" quá 3 s -> ESP32 khởi động lại,
@@ -22,6 +24,8 @@
 #include "hmi.h"
 #include "dieu_khien.h"
 #include "nhat_ky.h"
+#include "mang.h"
+#include "cai_dat.h"
 
 static const char *ten_ly_do_reset(esp_reset_reason_t r)
 {
@@ -56,7 +60,10 @@ void app_main(void)
     cm8_begin();
     hmi_khoi_dong();
     dieu_khien_khoi_dong();
+    mang_khoi_dong();               // NVS + WiFi: có WiFi đã lưu thì tự kết nối
+    cai_dat_khoi_dong();
 
-    printf("Da tao 5 task: dieu_khien, cm8, hmi_nhan, hmi_hoi, nhat_ky\n");
+    printf("Da tao 6 task: dieu_khien, cm8, hmi_nhan, hmi_hoi, cai_dat, nhat_ky | AP cau hinh: %s\n",
+           mang_ten_ap());
     // app_main kết thúc ở đây; các task tiếp tục chạy độc lập
 }

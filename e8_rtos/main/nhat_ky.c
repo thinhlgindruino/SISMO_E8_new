@@ -77,6 +77,8 @@ static void ten_trang(int t, char *out, size_t n)
     case 9:  s = "Mot de passe"; break;
     case 10: s = "Buổi tập Manuel"; break;
     case 11: s = "Buổi tập Durée"; break;
+    case 26: s = "Mật khẩu cài đặt"; break;
+    case 27: s = "Cài đặt (WiFi)"; break;
     default: snprintf(out, n, "Trang %d", t); return;
     }
     snprintf(out, n, "%s", s);
@@ -181,9 +183,9 @@ static void in_tien_trinh(void)
 // Stack còn trống ít nhất từ lúc chạy (ESP-IDF: tính bằng byte). Còn < ~500 byte là nên tăng stack.
 static void in_thong_ke(void)
 {
-    static const char *TEN[] = {"dieu_khien", "cm8", "hmi_nhan", "hmi_hoi", "nhat_ky"};
+    static const char *TEN[] = {"dieu_khien", "cm8", "hmi_nhan", "hmi_hoi", "nhat_ky", "cai_dat"};
     printf("---- Stack con trong (byte):");
-    for (int i = 0; i < 5; i++) {
+    for (int i = 0; i < 6; i++) {
         TaskHandle_t h = xTaskGetHandle(TEN[i]);
         if (h) printf(" %s=%u", TEN[i], (unsigned)uxTaskGetStackHighWaterMark(h));
     }

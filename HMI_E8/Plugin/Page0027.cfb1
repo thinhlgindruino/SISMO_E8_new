@@ -1,0 +1,5 @@
+﻿Page:,0x0000,,0x0000,,0x0000,,0x0000,0027_Parametres.jpg;RGBColor(0,0,0);0027_Parametres;Disable;0;0;Disable;
+varAdj_0:200,0,200,80,0x1012,1,0,1000,ushort,+,Loop,Repeat,,,varAdj_0,Enable,Disable,0x0000;
+button_0:0,0,130,80,0x0020,,,Page0001,button_6,Disable,Disable,0x0000,
+icon_0:0xFFFF,2,0x1040,2,90,405,420,70,0400_nut_offline.jpg,0402_nut_online.jpg,,,0,2,icon_0,Disable;
+varAdj_1:90,405,420,70,0x1013,1,1,1,ushort,+,Loop,Once,,,varAdj_1,Enable,Disable,0x0000;

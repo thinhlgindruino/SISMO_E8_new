@@ -20,6 +20,7 @@ static hmi_du_lieu_t dl = { .trang = -1 };
 // Hàng đợi các lần người dùng bấm +/- (Touch Returned Message của biến 0x1000).
 // Task điều khiển cần biết từng lần bấm khi đang Xung (lúc đó 0x1000 do ESP32 ghi dao động).
 static QueueHandle_t hang_doi_cham;
+static QueueHandle_t hang_doi_su_kien;   // bấm nút của phần cài đặt
 
 static int64_t ms_now(void) { return esp_timer_get_time() / 1000; }
 
@@ -51,6 +52,11 @@ void hmi_ghi(uint16_t dia_chi, uint16_t gia_tri) { gui_khung(0x10, dia_chi, gia_
 bool hmi_lay_cham_cuong_do(uint16_t *gia_tri)
 {
     return xQueueReceive(hang_doi_cham, gia_tri, 0) == pdTRUE;
+}
+
+bool hmi_lay_su_kien(hmi_su_kien_t *e, TickType_t cho)
+{
+    return xQueueReceive(hang_doi_su_kien, e, cho) == pdTRUE;
 }
 
 hmi_du_lieu_t hmi_lay(void)
@@ -95,6 +101,44 @@ static void xu_ly_khung(const uint8_t *p, uint16_t n)
         uint16_t dia_chi = (p[1] << 8) | p[2];
         uint16_t so_word = (p[3] << 8) | p[4];
         if (n != 5 + 2 * so_word + 2) return;
+        // 0x1011 (phím mật khẩu) + 0x1012 (nút Sismo), đọc chung 1 khung
+        if (dia_chi == DC_PHIM_MAT_KHAU && so_word == 2) {
+            uint16_t phim  = (p[5] << 8) | p[6];
+            uint16_t sismo = (p[7] << 8) | p[8];
+
+            // Phím: ESP32 ghi PHIM_TRONG sau mỗi lần đọc được phím -> bấm lại cùng phím vẫn thấy đổi.
+            // Nhanh hơn chờ 0x41 (màn hình chỉ báo 0x41 lúc thả tay).
+            static bool     da_doc_lan_dau = false;
+            static bool     cho_xoa = false;         // đã ghi PHIM_TRONG, chờ đọc thấy nó
+            static uint16_t phim_cu = PHIM_TRONG;
+            if (!da_doc_lan_dau) {                   // lần đầu: giá trị còn sót -> chỉ xóa, không tính là bấm
+                da_doc_lan_dau = true;
+                if (phim != PHIM_TRONG) {
+                    gui_khung(0x10, DC_PHIM_MAT_KHAU, PHIM_TRONG);
+                    cho_xoa = true;
+                    phim_cu = phim;
+                }
+            } else if (phim == PHIM_TRONG) {
+                cho_xoa = false;
+            } else if (!cho_xoa || phim != phim_cu) {    // phím mới
+                hmi_su_kien_t e = { .dia_chi = DC_PHIM_MAT_KHAU, .gia_tri = phim, .nguon = SK_NGUON_DOC };
+                xQueueSend(hang_doi_su_kien, &e, 0);
+                gui_khung(0x10, DC_PHIM_MAT_KHAU, PHIM_TRONG);
+                cho_xoa = true;
+                phim_cu = phim;
+            } else {
+                gui_khung(0x10, DC_PHIM_MAT_KHAU, PHIM_TRONG);   // lệnh xóa trước bị mất -> ghi lại
+            }
+
+            // Sismo: giá trị đổi so với lần đọc trước = đang bấm / đang giữ
+            static int32_t sismo_cu = -1;
+            if (sismo_cu >= 0 && sismo != (uint16_t)sismo_cu) {
+                hmi_su_kien_t e = { .dia_chi = DC_NUT_SISMO, .gia_tri = sismo, .nguon = SK_NGUON_DOC };
+                xQueueSend(hang_doi_su_kien, &e, 0);
+            }
+            sismo_cu = sismo;
+            return;
+        }
         xSemaphoreTake(khoa, portMAX_DELAY);
         uint16_t cd_cu = dl.bien[0];
         bool co_cd = false;
@@ -126,6 +170,10 @@ static void xu_ly_khung(const uint8_t *p, uint16_t n)
                 xQueueSend(hang_doi_cham, &v, 0);
                 bao_doi_cuong_do(cd_cu, v, "man hinh tu bao (0x41)");
             }
+        } else if (dia_chi == DC_NUT_SISMO || dia_chi == DC_NUT_CAI_DAT) {
+            // (phím mật khẩu 0x1011 KHÔNG lấy từ 0x41 nữa - đã đọc trực tiếp ở trên, lấy cả 2 sẽ bị đếm đôi)
+            hmi_su_kien_t e = { .dia_chi = dia_chi, .gia_tri = v, .nguon = SK_NGUON_BAO };
+            xQueueSend(hang_doi_su_kien, &e, 0);
         }
     }
 }
@@ -155,13 +203,28 @@ static void task_hmi_nhan(void *arg)
     esp_task_wdt_add(NULL);
     uint8_t rx[128];
     while (1) {
-        int n = uart_read_bytes(HMI_UART, rx, sizeof(rx), pdMS_TO_TICKS(100));
+        // Chờ byte ĐẦU TIÊN (tối đa 100 ms), rồi lấy hết phần đã có sẵn, không chờ thêm.
+        // (Không gọi uart_read_bytes(..., 128, ...): hàm đó chờ đủ 128 byte, mà màn hình trả lời
+        //  liên tục nên ~300 ms mới đủ -> mọi dữ liệu màn hình bị trễ tới 300 ms.)
+        int n = uart_read_bytes(HMI_UART, rx, 1, pdMS_TO_TICKS(100));
+        if (n > 0) {
+            size_t co_san = 0;
+            uart_get_buffered_data_len(HMI_UART, &co_san);
+            if (co_san > sizeof(rx) - 1) co_san = sizeof(rx) - 1;
+            if (co_san) {
+                int m = uart_read_bytes(HMI_UART, rx + 1, co_san, 0);
+                if (m > 0) n += m;
+            }
+        }
         for (int i = 0; i < n; i++) nhan_byte(rx[i]);
         esp_task_wdt_reset();               // báo watchdog "task này còn sống"
     }
 }
 
-// ---------------- Task hỏi: biến mỗi 100 ms, trang mỗi 250 ms ----------------
+// ---------------- Task hỏi ----------------
+// Mỗi nửa chu kỳ (50 ms) gửi 1 câu hỏi, xen kẽ:
+//   - phím mật khẩu 0x1011 + nút Sismo 0x1012 (mỗi 100 ms)
+//   - biến 0x1000..0x1009 / trang 0x7000 như cũ
 // Hỏi thưa vừa đủ: đồng hồ cường độ do màn hình tự vẽ, việc bấm +/- màn hình tự báo (0x41).
 static void task_hmi_hoi(void *arg)
 {
@@ -170,9 +233,13 @@ static void task_hmi_hoi(void *arg)
     TickType_t moc = xTaskGetTickCount();
     const int so_lan_hoi_trang = HMI_CHU_KY_TRANG_MS / HMI_CHU_KY_BIEN_MS;
     int dem = 0;
+    bool luot_sismo = false;
     while (1) {
-        vTaskDelayUntil(&moc, pdMS_TO_TICKS(HMI_CHU_KY_BIEN_MS));   // chu kỳ đều, không trôi
-        if (++dem >= so_lan_hoi_trang) {
+        vTaskDelayUntil(&moc, pdMS_TO_TICKS(HMI_CHU_KY_BIEN_MS / 2));   // chu kỳ đều, không trôi
+        luot_sismo = !luot_sismo;
+        if (luot_sismo) {
+            gui_khung(0x03, DC_PHIM_MAT_KHAU, 2);    // 0x1011, 0x1012
+        } else if (++dem >= so_lan_hoi_trang) {
             dem = 0;
             gui_khung(0x03, 0x7000, 1);
         } else {
@@ -193,6 +260,7 @@ void hmi_khoi_dong(void)
 {
     khoa = xSemaphoreCreateMutex();
     hang_doi_cham = xQueueCreate(16, sizeof(uint16_t));
+    hang_doi_su_kien = xQueueCreate(16, sizeof(hmi_su_kien_t));
 
     const uart_config_t cfg = {
         .baud_rate  = HMI_BAUD,

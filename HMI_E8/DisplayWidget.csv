@@ -1,5 +1,5 @@
 PageID,WidgetName,Name    ,WriteAddr,Length,ParameterAddr,Length
-6,icon_0,icon_0,0x100B,2,0xFFFF,14
+6,icon_0,icon_0,0x1000,2,0xFFFF,14
 6,icon_1,icon_1,0x1001,2,0xFFFF,14
 6,uitimer_0,uitimer_0,0x1003,2,0xFFFF,48,0x1002,2,0x1001,2
 6,icon_2,icon_2,0x1005,2,0xFFFF,14
@@ -10,11 +10,13 @@ PageID,WidgetName,Name    ,WriteAddr,Length,ParameterAddr,Length
 8,icon_1,icon_1,0x1005,2,0xFFFF,14
 8,icon_2,icon_2,0x1001,2,0xFFFF,14
 9,pngNumber_0,pngNumber_0,0x1010,2,0xFFFF,14,0x81
-10,icon_0,icon_0,0x100B,2,0xFFFF,14
+10,icon_0,icon_0,0x1000,2,0xFFFF,14
 10,icon_1,icon_1,0x1001,2,0xFFFF,14
 10,uitimer_0,uitimer_0,0x1003,2,0xFFFF,48,0x1002,2,0x1001,2
 10,icon_2,icon_2,0x1005,2,0xFFFF,14
-11,icon_0,icon_0,0x100B,2,0xFFFF,14
+11,icon_0,icon_0,0x1000,2,0xFFFF,14
 11,icon_1,icon_1,0x1001,2,0xFFFF,14
 11,uitimer_0,uitimer_0,0x1003,2,0xFFFF,48,0x1002,2,0x1001,2
 11,icon_2,icon_2,0x1005,2,0xFFFF,14
+26,icon_0,icon_0,0x1039,2,0xFFFF,14
+27,icon_0,icon_0,0x1040,2,0xFFFF,14

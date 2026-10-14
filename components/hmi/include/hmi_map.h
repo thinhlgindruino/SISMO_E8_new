@@ -1,0 +1,4 @@
+#pragma once
+
+#define TOUCH_BUTTON_ADDRESS    0xFFFF
+#define TRIGGER_BUTTON_ADDRESS  0x700D

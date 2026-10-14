@@ -1,12 +1,14 @@
 /*
- * web.c - Web server cấu hình tại http://192.168.10.100 (xem web.h)
+ * web.c - Web server cấu hình tại http://192.168.10.100 (giống trang web E8 cũ)
  *
- *   GET  /          trang Settings (WIFI SETUP: SSID + Password + Submit)  - giống E8 cũ
- *   POST /settings  lưu WiFi vào /spiffs/wifi.json -> tắt AP -> màn hình về trang 0 -> ESP32 khởi động lại
- *   GET  /wifi.json xem file WiFi đã lưu (mật khẩu che ****)
- *   POST /rollback  quay về firmware trước (vùng OTA còn lại)
- *   GET  /upload    trang Upload (chọn file firmware .bin)
- *   POST /update    nhận file .bin, ghi vào vùng OTA còn lại -> khởi động lại bằng firmware mới
+ *   GET  /           tab Settings: WIFI SETUP (SSID + Password + Submit)
+ *   POST /settings   lưu WiFi (đúng hay sai đều lưu) -> tắt AP -> màn hình về trang 0 -> khởi động lại
+ *   GET  /upload     tab Upload: phiên bản đang chạy, vùng đang chạy, nút Roll back, chọn file .bin
+ *   POST /update     thân request là nguyên file .bin -> ghi qua component ota -> khởi động lại
+ *   POST /rollback   quay về firmware ở vùng OTA còn lại
+ *   GET  /wifi.json  xem file WiFi đã lưu (mật khẩu che ****)
+ *
+ * Chỉ chạy trong chế độ cấu hình (web_start / web_stop do network gọi). Server chạy core 0, stack 8 KB.
  */
 #include <stdio.h>
 #include <string.h>
@@ -20,7 +22,6 @@
 static const char *TAG = "WEB";
 static httpd_handle_t server = NULL;
 
-// ---------------- Phần HTML chung (đầu trang + thanh menu) ----------------
 static const char *HTML_HEAD =
     "<!DOCTYPE html><html><head><meta charset='utf-8'>"
     "<meta name='viewport' content='width=device-width,initial-scale=1'>"
@@ -56,7 +57,6 @@ static const char *HTML_SETTINGS =
     "<div class='nut'><input type='submit' value='Submit'></div>"
     "</form></div>";
 
-// Phần đầu tab Upload (thông tin firmware) được tạo động trong handle_upload_page()
 static const char *HTML_UPLOAD =
     "<form onsubmit='return guiFile()'>"
     "<input type='file' id='f' accept='.bin'>"
@@ -95,10 +95,8 @@ static esp_err_t send_message(httpd_req_t *req, const char *text)
     return send_page(req, HTML_MENU_SETTINGS, content);
 }
 
-// ---------------- Tab Settings ----------------
 static esp_err_t handle_root(httpd_req_t *req) { return send_page(req, HTML_MENU_SETTINGS, HTML_SETTINGS); }
 
-// Giải mã dữ liệu form: '+' -> ' ', "%XX" -> ký tự
 static void url_decode(char *s)
 {
     char *d = s;
@@ -113,7 +111,6 @@ static void url_decode(char *s)
     *d = '\0';
 }
 
-// Chuỗi an toàn để chèn vào HTML (tránh tên WiFi có ký tự < > & ")
 static void html_escape(const char *src, char *dst, size_t n)
 {
     size_t j = 0;
@@ -148,10 +145,7 @@ static esp_err_t handle_save_wifi(httpd_req_t *req)
     url_decode(ssid);
     url_decode(pass);
 
-    // Submit = kết thúc cấu hình, dù mật khẩu đúng hay sai: lưu lại, TẮT AP, khởi động lại.
-    // Sai mật khẩu -> sau khi khởi động lại không vào được mạng -> OFFLINE.
-    // (Chỉ chặn SSID rỗng; ô SSID trên trang đã 'required' nên trình duyệt không cho gửi rỗng.)
-    ssid[32] = '\0';                        // SSID tối đa 32 ký tự, mật khẩu tối đa 64
+    ssid[32] = '\0';
     pass[64] = '\0';
     if (ssid[0] == '\0') return send_message(req, "Please enter the SSID.<br><a href='/'>Back</a>");
 
@@ -161,12 +155,10 @@ static esp_err_t handle_save_wifi(httpd_req_t *req)
     if (ok) snprintf(msg, sizeof(msg), "Saved. The device will restart and connect to <b>%s</b>.", ssid_html);
     else    snprintf(msg, sizeof(msg), "Save failed. The device will restart.");
     send_message(req, msg);
-    net_finish_config_and_restart(1000);  // đợi trang kịp gửi xong -> tắt AP -> reset
+    net_finish_config_and_restart(1000);
     return ESP_OK;
 }
 
-// ---------------- Tab Upload (cập nhật firmware) ----------------
-// GET /wifi.json : xem file WiFi đã lưu (mật khẩu che ****)
 static esp_err_t handle_view_json(httpd_req_t *req)
 {
     char buf[256];
@@ -199,7 +191,6 @@ static esp_err_t handle_upload_page(httpd_req_t *req)
     return httpd_resp_sendstr_chunk(req, NULL);
 }
 
-// POST /update : thân request là nguyên file .bin (trình duyệt gửi bằng XHR, application/octet-stream)
 static esp_err_t handle_update(httpd_req_t *req)
 {
     const char *err = NULL;
@@ -217,11 +208,10 @@ static esp_err_t handle_update(httpd_req_t *req)
     if (!ota_upload_finish(&err)) { httpd_resp_sendstr(req, err); return ESP_OK; }
 
     httpd_resp_sendstr(req, "Update OK. The device is restarting...");
-    net_finish_config_and_restart(1500);    // màn hình về trang 0 -> tắt AP -> khởi động lại bằng firmware mới
+    net_finish_config_and_restart(1500);
     return ESP_OK;
 }
 
-// POST /rollback : quay về firmware ở vùng còn lại
 static esp_err_t handle_rollback(httpd_req_t *req)
 {
     const char *err = NULL;
@@ -236,7 +226,7 @@ void web_start(void)
     if (server) return;
     httpd_config_t c = HTTPD_DEFAULT_CONFIG();
     c.stack_size = 8192;
-    c.core_id = 0;                          // chạy ở core 0, không giành core 1 của phần điều khiển
+    c.core_id = 0;
     c.lru_purge_enable = true;
     if (httpd_start(&server, &c) != ESP_OK) { ESP_LOGE(TAG, "Khong mo duoc web server"); return; }
 

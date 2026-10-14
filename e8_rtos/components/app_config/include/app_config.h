@@ -1,42 +1,53 @@
 /*
- * app_config.h - Cấu hình chung của cả ứng dụng: bảng task (ưu tiên / stack / core), watchdog, gỡ lỗi
+ * app_config.h - Cấu hình chung của cả ứng dụng: bảng task, watchdog, cờ gỡ lỗi
+ *
+ * Bảng task (ưu tiên càng lớn càng được chạy trước; stack tính bằng BYTE; tất cả chạy core 1,
+ * core 0 để WiFi / lwIP / web):
+ *   session  6   điều khiển động cơ + an toàn, chu kỳ 50 ms
+ *   motor    5   Modbus RTU với CM8
+ *   hmi_rx   5   nhận khung từ màn hình
+ *   hmi_poll 4   hỏi màn hình định kỳ
+ *   setting  3   Sismo, mật khẩu, trang cài đặt (bật AP + web chạy trong task này -> stack 5120)
+ *   logger   2   in log (thấp nhất để không làm chậm điều khiển)
+ *
+ * WDT_TIMEOUT_MS: task nào không báo "còn sống" quá 3 s -> ESP32 khởi động lại.
+ *
+ * Cờ gỡ lỗi (1 = bật):
+ *   DEBUG_TASK_STATS        mỗi 30 s in stack còn trống của từng task
+ *   DEBUG_SISMO_EVENTS      in mỗi lần nút Sismo / phím mật khẩu đổi
+ *   DEBUG_INTENSITY         in mỗi lần cường độ 0x1000 đổi (kèm thời gian)
+ *   DEBUG_UNHANDLED_EVENTS  in sự kiện màn hình không trang nào nhận
+ *   TEST_TASK_HANG          sau 20 s cố tình treo task hmi_poll để thử watchdog (để 0 khi dùng thật)
  *
  * Thông số riêng của từng module nằm trong module đó:
- *   chân + baud màn hình  -> components/hmi/include/hmi.h
- *   địa chỉ / số trang UI -> components/hmi/include/hmi_map.h
- *   chân + thanh ghi CM8  -> components/motor_modbus/include/motor_modbus.h
- *   cường độ / Xung / CM8 -> components/pages/page_session/page_session.c
- *   mật khẩu, giữ Sismo   -> components/pages/page_setting/page_setting.c
- *   WiFi AP / web         -> components/network/include/network.h
+ *   chân + baud màn hình   -> components/hmi/include/hmi.h
+ *   địa chỉ / số trang UI  -> components/hmi/include/hmi_map.h
+ *   chân + thanh ghi CM8   -> components/motor_modbus/include/motor_modbus.h
+ *   cường độ / Xung / CM8  -> components/pages/page_session/page_session.c
+ *   mật khẩu, giữ Sismo    -> components/pages/page_setting/page_setting.c
+ *   WiFi AP / web          -> components/network/include/network.h
  */
 #pragma once
 
-// ---------------- Bảng task ----------------
-// Ưu tiên: số càng lớn càng được chạy trước. Task an toàn (page_session) cao nhất,
-// in log thấp nhất để không bao giờ làm chậm phần điều khiển.
-#define PRIO_SESSION              6             // page_session: điều khiển động cơ, an toàn (50 ms)
-#define PRIO_MOTOR                5             // motor_modbus: Modbus RTU với CM8
-#define PRIO_HMI_RX               5             // hmi: nhận khung từ màn hình
-#define PRIO_HMI_POLL             4             // hmi: hỏi màn hình định kỳ
-#define PRIO_SETTING              3             // page_setting: Sismo, mật khẩu, WiFi
-#define PRIO_LOGGER               2             // logger: in log
+#define PRIO_SESSION              6
+#define PRIO_MOTOR                5
+#define PRIO_HMI_RX               5
+#define PRIO_HMI_POLL             4
+#define PRIO_SETTING              3
+#define PRIO_LOGGER               2
 
-// Stack: trong ESP-IDF tính bằng BYTE (FreeRTOS gốc tính bằng word)
 #define STACK_SESSION             4096
 #define STACK_MOTOR               4096
 #define STACK_HMI                 4096
-#define STACK_SETTING             5120          // bật AP + web chạy trong task này -> cần nhiều stack hơn
+#define STACK_SETTING             5120
 #define STACK_LOGGER              4096
 
-#define APP_CORE                  1             // các task ứng dụng chạy core 1 (core 0: WiFi, lwIP, web)
+#define APP_CORE                  1
 
-// ---------------- Watchdog ----------------
-#define WDT_TIMEOUT_MS            3000          // task nào không báo "còn sống" quá 3 s -> khởi động lại
+#define WDT_TIMEOUT_MS            3000
 
-// ---------------- Gỡ lỗi ----------------
-#define DEBUG_TASK_STATS          1             // 1: mỗi 30 s in stack còn trống của từng task
-#define DEBUG_SISMO_EVENTS        0             // 1: in mỗi lần thấy nút Sismo / phím mật khẩu đổi
-#define DEBUG_INTENSITY           0             // 1: in mỗi lần cường độ 0x1000 đổi (kèm thời gian)
-#define DEBUG_UNHANDLED_EVENTS    0             // 1: in sự kiện màn hình không trang nào xử lý
-#define TEST_TASK_HANG            0             // 1: sau 20 s cố tình làm task "hmi_poll" bị treo
-                                                //    để thử watchdog (NHỚ ĐỂ 0 khi dùng thật)
+#define DEBUG_TASK_STATS          1
+#define DEBUG_SISMO_EVENTS        0
+#define DEBUG_INTENSITY           0
+#define DEBUG_UNHANDLED_EVENTS    0
+#define TEST_TASK_HANG            0

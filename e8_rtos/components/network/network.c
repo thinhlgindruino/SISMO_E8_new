@@ -1,11 +1,13 @@
 /*
- * network.c - WiFi STA / AP cấu hình (xem network.h)
+ * network.c - WiFi STA / AP cấu hình, lưu WiFi, hẹn giờ khởi động lại (xem network.h)
  *
- * Lưu WiFi: file JSON /spiffs/wifi.json trên phân vùng "storage" (SPIFFS) của flash ESP32:
- *     {"ssid":"NCTD-11","password":"..."}
- *
- * Chế độ cấu hình chạy AP + STA cùng lúc: đang ONLINE thì bật AP vẫn giữ kết nối WiFi,
- * tắt AP là về lại ONLINE ngay.
+ * - wifi.json: {"ssid": "...", "password": "..."} trên SPIFFS (device_settings đã gắn sẵn).
+ *   Bản cũ lưu trong NVS -> lần đầu tự chuyển sang wifi.json rồi xóa khỏi NVS.
+ *   Driver WiFi đặt WIFI_STORAGE_RAM nên không tự lưu thêm bản riêng.
+ * - Mật khẩu sai định dạng (vd. < 8 ký tự) chỉ làm kết nối thất bại -> OFFLINE, không làm ESP32 treo.
+ * - Trong lúc cấu hình KHÔNG tự thử kết nối lại (mỗi lần thử STA phải quét kênh, làm điện thoại
+ *   đang vào AP bị rớt). AP tự theo kênh của router khi STA đang kết nối.
+ * - Sự kiện WiFi / IP chạy trong task event loop của ESP-IDF (core 0); trạng thái đọc qua critical section.
  */
 #include <stdio.h>
 #include <string.h>
@@ -19,7 +21,7 @@
 #include "esp_event.h"
 #include "esp_netif.h"
 #include "esp_timer.h"
-#include "esp_spiffs.h"
+#include "device_settings.h"
 #include "nvs_flash.h"
 #include "nvs.h"
 #include "cJSON.h"
@@ -29,22 +31,20 @@
 
 static const char *TAG = "MANG";
 
-#define FS_BASE        "/spiffs"
-#define FILE_WIFI     FS_BASE "/wifi.json"
-#define FILE_TMP      FS_BASE "/wifi.tmp"
+#define FILE_WIFI     STORAGE_BASE "/wifi.json"
 
-#define FAST_RETRY_COUNT   5          // 5 lần đầu thử lại sau 2 s
+#define FAST_RETRY_COUNT   5
 #define FAST_RETRY_MS   2000
-#define SLOW_RETRY_MS    15000      // sau đó cứ 15 s thử lại 1 lần (router bật lại là tự vào)
+#define SLOW_RETRY_MS    15000
 
 static portMUX_TYPE lock = portMUX_INITIALIZER_UNLOCKED;
 static net_state_t status = NET_OFFLINE;
 static char ap_name[33];
 static char saved_ssid[33];
 static char saved_pass[65];
-static char ip_sta[16] = "";          // IP khi đang vào WiFi (chế độ thường)
+static char ip_sta[16] = "";
 static bool has_saved_wifi = false;
-static bool sta_has_ip = false;        // STA đang có IP (vẫn giữ trong lúc bật AP cấu hình)
+static bool sta_has_ip = false;
 static bool config_active = false;
 static bool fs_ok = false;
 static int  retry_count = 0;
@@ -94,7 +94,6 @@ void net_get_info(char *ssid, size_t n_ssid, char *ip, size_t n_ip)
     portEXIT_CRITICAL(&lock);
 }
 
-// Trạng thái "thường" (không tính chế độ cấu hình): ONLINE / đang kết nối / OFFLINE
 static net_state_t normal_state(void)
 {
     if (sta_has_ip) return NET_ONLINE;
@@ -102,19 +101,6 @@ static net_state_t normal_state(void)
     return NET_OFFLINE;
 }
 
-// ---------------- File JSON lưu WiFi ----------------
-static void mount_fs(void)
-{
-    const esp_vfs_spiffs_conf_t c = {
-        .base_path = FS_BASE, .partition_label = "storage",
-        .max_files = 4, .format_if_mount_failed = true,     // lần đầu: tự format phân vùng trống
-    };
-    esp_err_t e = esp_vfs_spiffs_register(&c);
-    fs_ok = (e == ESP_OK);
-    if (!fs_ok) ESP_LOGE(TAG, "Khong mo duoc SPIFFS (%s) -> khong luu duoc WiFi", esp_err_to_name(e));
-}
-
-// Đọc wifi.json vào saved_ssid / saved_pass. Trả về true nếu có SSID.
 static bool read_wifi_file(void)
 {
     saved_ssid[0] = saved_pass[0] = '\0';
@@ -142,26 +128,15 @@ static bool write_wifi_file(const char *ssid, const char *pass)
     cJSON *j = cJSON_CreateObject();
     cJSON_AddStringToObject(j, "ssid", ssid);
     cJSON_AddStringToObject(j, "password", pass);
-    char *txt = cJSON_Print(j);                 // có xuống dòng, thụt lề cho dễ đọc
+    char *txt = cJSON_Print(j);
     cJSON_Delete(j);
     if (!txt) return false;
 
-    // Ghi ra file tạm rồi đổi tên: mất điện giữa chừng không làm hỏng file cũ
-    bool ok = false;
-    FILE *f = fopen(FILE_TMP, "w");
-    if (f) {
-        ok = fputs(txt, f) >= 0;
-        ok = (fclose(f) == 0) && ok;
-    }
+    bool ok = storage_write_text(FILE_WIFI, txt);
     cJSON_free(txt);
-    if (ok) {
-        remove(FILE_WIFI);
-        ok = (rename(FILE_TMP, FILE_WIFI) == 0);
-    }
     return ok;
 }
 
-// Bản cũ lưu WiFi trong NVS -> chuyển sang wifi.json 1 lần rồi xóa khỏi NVS
 static void migrate_from_nvs(void)
 {
     nvs_handle_t h;
@@ -214,7 +189,6 @@ int net_read_json(char *buf, size_t n, bool mask_password)
     return (int)strlen(buf);
 }
 
-// ---------------- Khởi động lại ----------------
 void net_set_before_restart_hook(void (*hook)(void)) { before_restart_hook = hook; }
 
 static void restart_now(void *arg) { (void)arg; esp_restart(); }
@@ -232,8 +206,8 @@ void net_restart_after(int ms)
 static void stop_ap_and_restart(void *arg)
 {
     (void)arg;
-    if (before_restart_hook) before_restart_hook();   // vd. đưa màn hình về trang 0
-    esp_wifi_stop();                          // tắt AP trước, rồi khởi động lại để vào WiFi mới
+    if (before_restart_hook) before_restart_hook();
+    esp_wifi_stop();
     esp_restart();
 }
 
@@ -247,9 +221,6 @@ void net_finish_config_and_restart(int ms)
     esp_timer_start_once(finish_timer, (uint64_t)ms * 1000);
 }
 
-// ---------------- Sự kiện WiFi ----------------
-// Trong lúc cấu hình KHÔNG tự thử kết nối lại: mỗi lần thử STA phải quét kênh,
-// làm điện thoại đang vào AP bị rớt.
 static void retry_connect(void *arg) { (void)arg; if (!config_active && has_saved_wifi) esp_wifi_connect(); }
 
 static void on_event(void *arg, esp_event_base_t base, int32_t id, void *data)
@@ -267,11 +238,10 @@ static void on_event(void *arg, esp_event_base_t base, int32_t id, void *data)
         ip_sta[0] = '\0';
         portEXIT_CRITICAL(&lock);
         if (config_active || !has_saved_wifi) return;
-        if (had_ip) retry_count = 0;            // vừa rớt mạng: thử lại nhanh từ đầu
+        if (had_ip) retry_count = 0;
         wifi_event_sta_disconnected_t *e = (wifi_event_sta_disconnected_t *)data;
         retry_count++;
         ESP_LOGW(TAG, "Mat ket noi / khong vao duoc \"%s\" (ly do %d), lan %d", saved_ssid, e->reason, retry_count);
-        // Thử vài lần đầu vẫn coi là "đang kết nối", quá thì báo OFFLINE nhưng vẫn thử lại chậm
         set_state(normal_state());
         esp_timer_stop(retry_timer);
         esp_timer_start_once(retry_timer,
@@ -294,10 +264,8 @@ static void on_event(void *arg, esp_event_base_t base, int32_t id, void *data)
     }
 }
 
-// ---------------- Khởi động ----------------
 void net_start(void)
 {
-    // NVS: driver WiFi cần (hiệu chỉnh RF). Bộ nhớ hỏng / đổi phiên bản thì xóa đi làm lại.
     esp_err_t e = nvs_flash_init();
     if (e == ESP_ERR_NVS_NO_FREE_PAGES || e == ESP_ERR_NVS_NEW_VERSION_FOUND) {
         ESP_ERROR_CHECK(nvs_flash_erase());
@@ -305,13 +273,12 @@ void net_start(void)
     }
     ESP_ERROR_CHECK(e);
 
-    mount_fs();
+    fs_ok = device_storage_ok();
     if (fs_ok) {
         struct stat st;
         if (stat(FILE_WIFI, &st) != 0) migrate_from_nvs();
     }
 
-    // Tên AP từ MAC (MAC "WiFi STA", là MAC mà lệnh esptool read_mac in ra)
     uint8_t mac[6];
     esp_read_mac(mac, ESP_MAC_WIFI_STA);
     snprintf(ap_name, sizeof(ap_name), "SISMO_E8_%02X%02X%02X", mac[3], mac[4], mac[5]);
@@ -322,7 +289,6 @@ void net_start(void)
     netif_sta = esp_netif_create_default_wifi_sta();
     netif_ap  = esp_netif_create_default_wifi_ap();
 
-    // IP tĩnh 192.168.10.100 cho AP, DHCP cấp IP cho máy kết nối vào
     esp_netif_ip_info_t ip = {0};
     ip.ip.addr      = ipaddr_addr(NET_AP_IP);
     ip.gw.addr      = ipaddr_addr(NET_AP_IP);
@@ -333,7 +299,7 @@ void net_start(void)
 
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
     ESP_ERROR_CHECK(esp_wifi_init(&cfg));
-    ESP_ERROR_CHECK(esp_wifi_set_storage(WIFI_STORAGE_RAM));   // chỉ lưu ở wifi.json, driver không tự lưu
+    ESP_ERROR_CHECK(esp_wifi_set_storage(WIFI_STORAGE_RAM));
     ESP_ERROR_CHECK(esp_event_handler_register(WIFI_EVENT, ESP_EVENT_ANY_ID, on_event, NULL));
     ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, IP_EVENT_STA_GOT_IP, on_event, NULL));
 
@@ -351,7 +317,6 @@ void net_start(void)
         strncpy((char *)w.sta.ssid, saved_ssid, sizeof(w.sta.ssid) - 1);
         strncpy((char *)w.sta.password, saved_pass, sizeof(w.sta.password) - 1);
         w.sta.threshold.authmode = saved_pass[0] ? WIFI_AUTH_WPA_PSK : WIFI_AUTH_OPEN;
-        // Không ESP_ERROR_CHECK: mật khẩu sai định dạng (vd. < 8 ký tự) chỉ làm kết nối thất bại
         esp_err_t ec = esp_wifi_set_config(WIFI_IF_STA, &w);
         if (ec != ESP_OK) {
             ESP_LOGW(TAG, "WiFi da luu \"%s\" khong hop le (%s) -> OFFLINE", saved_ssid, esp_err_to_name(ec));
@@ -363,10 +328,9 @@ void net_start(void)
         ESP_LOGI(TAG, "Chua co WiFi da luu (%s) -> OFFLINE", FILE_WIFI);
     }
     set_state(NET_OFFLINE);
-    ESP_ERROR_CHECK(esp_wifi_start());       // STA_START -> tự connect nếu có WiFi lưu
+    ESP_ERROR_CHECK(esp_wifi_start());
 }
 
-// ---------------- Chế độ cấu hình ----------------
 void net_config_start(void)
 {
     if (config_active) return;
@@ -374,13 +338,13 @@ void net_config_start(void)
     esp_timer_stop(retry_timer);
     ESP_LOGI(TAG, "Bat che do cau hinh (AP %s)%s", ap_name,
              sta_has_ip ? " - van giu ket noi WiFi hien tai" : "");
-    if (!sta_has_ip) esp_wifi_disconnect();   // đang thử kết nối dở -> dừng, tránh quét kênh làm rớt AP
+    if (!sta_has_ip) esp_wifi_disconnect();
 
     wifi_config_t w = {0};
     strncpy((char *)w.ap.ssid, ap_name, sizeof(w.ap.ssid) - 1);
     w.ap.ssid_len = strlen(ap_name);
     strncpy((char *)w.ap.password, NET_AP_PASSWORD, sizeof(w.ap.password) - 1);
-    w.ap.channel = NET_AP_CHANNEL;             // đang vào WiFi thì AP tự theo kênh của router
+    w.ap.channel = NET_AP_CHANNEL;
     w.ap.max_connection = NET_AP_MAX_CLIENTS;
     w.ap.authmode = WIFI_AUTH_WPA2_PSK;
 
@@ -396,11 +360,11 @@ void net_config_stop(void)
 {
     if (!config_active) return;
     web_stop();
-    esp_wifi_set_mode(WIFI_MODE_STA);        // tắt AP -> điện thoại không còn thấy SISMO_E8_...
+    esp_wifi_set_mode(WIFI_MODE_STA);
     config_active = false;
     retry_count = 0;
     net_state_t t = normal_state();
     ESP_LOGI(TAG, "Tat che do cau hinh (tat AP) -> ve trang thai hien tai: %s", net_state_name(t));
     set_state(t);
-    if (!sta_has_ip && has_saved_wifi) esp_wifi_connect();   // chưa vào mạng -> thử lại
+    if (!sta_has_ip && has_saved_wifi) esp_wifi_connect();
 }

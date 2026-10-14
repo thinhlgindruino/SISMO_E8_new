@@ -1,5 +1,24 @@
 /*
- * hmi.c - Task nhận / task hỏi màn hình HMI (xem hmi.h)
+ * hmi.c - Giao tiếp UART với màn hình HMI: task hmi_rx (nhận) và hmi_poll (hỏi định kỳ)
+ *
+ * hmi_rx:
+ *   - Chờ byte đầu tiên rồi lấy hết phần đã có sẵn trong bộ đệm (không chờ đủ 128 byte như
+ *     uart_read_bytes mặc định, nếu không dữ liệu màn hình bị trễ tới ~300 ms).
+ *   - Ghép khung 5A A5 | len | ... | CRC, kiểm tra CRC16 Modbus, cập nhật dữ liệu chung
+ *     (trang 0x7000, biến 0x1000..0x1009) dưới mutex.
+ *   - Khung 0x41 (màn hình tự báo khi bấm nút) -> chuyển cho hàm do ui_router đăng ký.
+ *     Riêng phím mật khẩu 0x1011 KHÔNG lấy từ 0x41 (đã đọc trực tiếp, lấy cả 2 sẽ đếm đôi).
+ *   - Kết quả đọc 0x1011 + 0x1012:
+ *       phím: thấy giá trị khác KEY_EMPTY = 1 lần bấm -> phát sự kiện rồi ghi lại KEY_EMPTY,
+ *             nhờ vậy bấm lại cùng 1 phím vẫn nhận được, và nhận ngay lúc chạm (0x41 chỉ báo lúc thả tay);
+ *       Sismo: giá trị đổi so với lần đọc trước = đang bấm / đang giữ (longPress Repeat tăng liên tục).
+ *   - Đếm byte / khung đúng / khung sai CRC để chẩn đoán đường dây.
+ *
+ * hmi_poll (mỗi 50 ms gửi 1 câu hỏi, xen kẽ):
+ *   0x1011..0x1012 mỗi 100 ms; còn lại luân phiên 0x1000..0x1009 và trang 0x7000.
+ *
+ * Hook trong task logger: chưa nhận được dữ liệu màn hình thì mỗi 5 s in số byte / khung nhận được
+ * và gợi ý lỗi dây (không có byte) hay lỗi định dạng / baud (có byte nhưng không có khung đúng).
  */
 #include <stdio.h>
 #include <string.h>
@@ -13,13 +32,13 @@
 #include "hmi.h"
 #include "logger.h"
 
-#define HMI_VAR_POLL_MS           100           // hỏi 0x1011/0x1012 mỗi 100 ms, xen kẽ biến / trang
-#define HMI_PAGE_POLL_MS          250           // hỏi trang hiện tại (0x7000)
+#define HMI_VAR_POLL_MS           100
+#define HMI_PAGE_POLL_MS          250
 
-static SemaphoreHandle_t lock;          // mutex bảo vệ 'shared'
+static SemaphoreHandle_t lock;
 static hmi_data_t shared = { .page = -1 };
 
-static hmi_event_handler_t event_handler = NULL;   // ui_router đăng ký
+static hmi_event_handler_t event_handler = NULL;
 
 void hmi_set_event_handler(hmi_event_handler_t handler) { event_handler = handler; }
 
@@ -29,7 +48,7 @@ static void emit(uint16_t addr, uint16_t value, hmi_source_t source)
     if (event_handler) event_handler(&e);
 }
 
-static hmi_diag_t diag;                 // chỉ task hmi_rx ghi
+static hmi_diag_t diag;
 static portMUX_TYPE diag_lock = portMUX_INITIALIZER_UNLOCKED;
 
 hmi_diag_t hmi_get_diag(void)
@@ -52,8 +71,6 @@ static uint16_t crc16_modbus(const uint8_t *d, size_t n)
     return c;
 }
 
-// Khung 10 byte: 5A A5 07 | lệnh | addr H L | data H L | CRC L H
-// uart_write_bytes của ESP-IDF có khóa riêng nên nhiều task cùng gửi không bị xen byte.
 static void send_frame(uint8_t cmd, uint16_t addr, uint16_t value)
 {
     uint8_t f[10] = {0x5A, 0xA5, 0x07, cmd,
@@ -82,7 +99,6 @@ bool hmi_is_linked(const hmi_data_t *d)
     return d->has_vars && (ms_now() - d->last_rx_ms < HMI_LINK_TIMEOUT_MS);
 }
 
-// ---------------- Chẩn đoán: in mỗi lần cường độ đổi ----------------
 static void log_intensity_change(uint16_t prev, uint16_t next, const char *source)
 {
 #if DEBUG_INTENSITY
@@ -98,7 +114,6 @@ static void log_intensity_change(uint16_t prev, uint16_t next, const char *sourc
 #endif
 }
 
-// ---------------- Giải mã khung nhận được ----------------
 static void handle_frame(const uint8_t *p, uint16_t n)
 {
     if (n < 3) return;
@@ -109,22 +124,18 @@ static void handle_frame(const uint8_t *p, uint16_t n)
     }
     portENTER_CRITICAL(&diag_lock); diag.frames_ok++; portEXIT_CRITICAL(&diag_lock);
 
-    // Kết quả đọc: 03 | addr(2) | số word(2) | data | CRC
     if (p[0] == 0x03 && n >= 7) {
         uint16_t addr = (p[1] << 8) | p[2];
         uint16_t word_count = (p[3] << 8) | p[4];
         if (n != 5 + 2 * word_count + 2) return;
-        // 0x1011 (phím mật khẩu) + 0x1012 (nút Sismo), đọc chung 1 khung
         if (addr == ADDR_PASSWORD_KEY && word_count == 2) {
             uint16_t key  = (p[5] << 8) | p[6];
             uint16_t sismo_val = (p[7] << 8) | p[8];
 
-            // Phím: ESP32 ghi KEY_EMPTY sau mỗi lần đọc được phím -> bấm lại cùng phím vẫn thấy đổi.
-            // Nhanh hơn chờ 0x41 (màn hình chỉ báo 0x41 lúc thả tay).
             static bool     first_read_done = false;
-            static bool     clear_pending = false;         // đã ghi KEY_EMPTY, chờ đọc thấy nó
+            static bool     clear_pending = false;
             static uint16_t last_key = KEY_EMPTY;
-            if (!first_read_done) {                   // lần đầu: giá trị còn sót -> chỉ xóa, không tính là bấm
+            if (!first_read_done) {
                 first_read_done = true;
                 if (key != KEY_EMPTY) {
                     send_frame(0x10, ADDR_PASSWORD_KEY, KEY_EMPTY);
@@ -133,16 +144,15 @@ static void handle_frame(const uint8_t *p, uint16_t n)
                 }
             } else if (key == KEY_EMPTY) {
                 clear_pending = false;
-            } else if (!clear_pending || key != last_key) {    // phím mới
+            } else if (!clear_pending || key != last_key) {
                 emit(ADDR_PASSWORD_KEY, key, EV_SRC_POLL);
                 send_frame(0x10, ADDR_PASSWORD_KEY, KEY_EMPTY);
                 clear_pending = true;
                 last_key = key;
             } else {
-                send_frame(0x10, ADDR_PASSWORD_KEY, KEY_EMPTY);   // lệnh xóa trước bị mất -> ghi lại
+                send_frame(0x10, ADDR_PASSWORD_KEY, KEY_EMPTY);
             }
 
-            // Sismo: giá trị đổi so với lần đọc trước = đang bấm / đang giữ
             static int32_t last_sismo = -1;
             if (last_sismo >= 0 && sismo_val != (uint16_t)last_sismo) {
                 emit(ADDR_SISMO_BUTTON, sismo_val, EV_SRC_POLL);
@@ -168,7 +178,6 @@ static void handle_frame(const uint8_t *p, uint16_t n)
         xSemaphoreGive(lock);
         if (got_intensity) log_intensity_change(prev_intensity, new_intensity, "doc dinh ky");
     }
-    // Touch Returned Message: 41 | addr(2) | giá trị(2)
     else if (p[0] == 0x41 && n == 7) {
         uint16_t addr = (p[1] << 8) | p[2];
         uint16_t v = (p[3] << 8) | p[4];
@@ -179,7 +188,6 @@ static void handle_frame(const uint8_t *p, uint16_t n)
             xSemaphoreGive(lock);
             if (addr == ADDR_INTENSITY) log_intensity_change(prev_intensity, v, "man hinh tu bao (0x41)");
         }
-        // Phím mật khẩu 0x1011 KHÔNG lấy từ 0x41 - đã đọc trực tiếp ở trên, lấy cả 2 sẽ bị đếm đôi
         if (addr != ADDR_PASSWORD_KEY) emit(addr, v, EV_SRC_REPORT);
     }
 }
@@ -202,16 +210,12 @@ static void rx_byte(uint8_t c)
     }
 }
 
-// ---------------- Task nhận: ngủ cho tới khi có byte về ----------------
 static void task_hmi_rx(void *arg)
 {
     (void)arg;
     esp_task_wdt_add(NULL);
     uint8_t rx[128];
     while (1) {
-        // Chờ byte ĐẦU TIÊN (tối đa 100 ms), rồi lấy hết phần đã có sẵn, không chờ thêm.
-        // (Không gọi uart_read_bytes(..., 128, ...): hàm đó chờ đủ 128 byte, mà màn hình trả lời
-        //  liên tục nên ~300 ms mới đủ -> mọi dữ liệu màn hình bị trễ tới 300 ms.)
         int n = uart_read_bytes(HMI_UART, rx, 1, pdMS_TO_TICKS(100));
         if (n > 0) {
             size_t avail = 0;
@@ -231,15 +235,10 @@ static void task_hmi_rx(void *arg)
             portEXIT_CRITICAL(&diag_lock);
         }
         for (int i = 0; i < n; i++) rx_byte(rx[i]);
-        esp_task_wdt_reset();               // báo watchdog "task này còn sống"
+        esp_task_wdt_reset();
     }
 }
 
-// ---------------- Task hỏi ----------------
-// Mỗi nửa chu kỳ (50 ms) gửi 1 câu hỏi, xen kẽ:
-//   - phím mật khẩu 0x1011 + nút Sismo 0x1012 (mỗi 100 ms)
-//   - biến 0x1000..0x1009 / trang 0x7000 như cũ
-// Hỏi thưa vừa đủ: đồng hồ cường độ do màn hình tự vẽ, việc bấm +/- màn hình tự báo (0x41).
 static void task_hmi_poll(void *arg)
 {
     (void)arg;
@@ -249,29 +248,27 @@ static void task_hmi_poll(void *arg)
     int counter = 0;
     bool sismo_turn = false;
     while (1) {
-        vTaskDelayUntil(&wake, pdMS_TO_TICKS(HMI_VAR_POLL_MS / 2));   // chu kỳ đều, không trôi
+        vTaskDelayUntil(&wake, pdMS_TO_TICKS(HMI_VAR_POLL_MS / 2));
         sismo_turn = !sismo_turn;
         if (sismo_turn) {
-            send_frame(0x03, ADDR_PASSWORD_KEY, 2);    // 0x1011, 0x1012
+            send_frame(0x03, ADDR_PASSWORD_KEY, 2);
         } else if (++counter >= page_poll_every) {
             counter = 0;
             send_frame(0x03, ADDR_PAGE, 1);
         } else {
-            send_frame(0x03, ADDR_VAR_BASE, HMI_VAR_COUNT);    // 0x1000..0x1009
+            send_frame(0x03, ADDR_VAR_BASE, HMI_VAR_COUNT);
         }
         esp_task_wdt_reset();
 
 #if TEST_TASK_HANG
         if (ms_now() > 20000) {
             log_send("!! THU: task hmi_poll bi treo (watchdog se khoi dong lai sau %d s)", WDT_TIMEOUT_MS / 1000);
-            while (1) vTaskDelay(pdMS_TO_TICKS(1000));   // treo: không còn báo watchdog
+            while (1) vTaskDelay(pdMS_TO_TICKS(1000));
         }
 #endif
     }
 }
 
-// ---------------- Chẩn đoán (chạy trong task logger) ----------------
-// Chưa nhận được dữ liệu màn hình: mỗi 5 s in số byte / khung nhận được để biết lỗi dây hay lỗi định dạng
 static void report_diag(void)
 {
     static int64_t last_ms = 0;

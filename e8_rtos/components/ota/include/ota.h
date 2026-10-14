@@ -17,26 +17,25 @@
 #include <stdbool.h>
 #include <stddef.h>
 
-#define OTA_SELFTEST_MS           15000         // firmware mới chạy ổn 15 s thì xác nhận
+#define OTA_SELFTEST_MS           15000
 
 typedef struct {
-    char version[32];         // PROJECT_VER trong CMakeLists.txt gốc
+    char version[32];
     char project[32];
     char build_date[16];
     char build_time[16];
-    char running[17];         // vùng đang chạy: ota_0 / ota_1
-    bool pending_verify;      // đang chờ xác nhận (vừa cập nhật xong)
-    bool can_rollback;        // vùng còn lại có firmware hợp lệ để quay về
-    char other_version[32];   // phiên bản ở vùng còn lại ("" nếu không có)
+    char running[17];
+    bool pending_verify;
+    bool can_rollback;
+    char other_version[32];
 } ota_info_t;
 
-void ota_start(void);                          // gọi lúc khởi động: in thông tin, hẹn giờ tự xác nhận
+void ota_start(void);
 void ota_get_info(ota_info_t *info);
 
-// Nạp firmware từng đoạn (web.c gọi). err = câu báo lỗi tiếng Anh để hiện trên trang web.
 bool ota_upload_begin(size_t total_size, const char **err);
 bool ota_upload_write(const void *data, size_t len, const char **err);
-bool ota_upload_finish(const char **err);     // kiểm tra toàn bộ ảnh + đặt vùng khởi động mới
+bool ota_upload_finish(const char **err);
 void ota_upload_abort(void);
 
-bool ota_rollback(const char **err);          // đặt vùng còn lại làm vùng khởi động (gọi xong thì restart)
+bool ota_rollback(const char **err);

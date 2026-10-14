@@ -1,0 +1,4 @@
+﻿Page:,0x0000,,0x0000,,0x0000,,0x0000,0028_Mode.jpg;0028_RGBColor(0,0,0);0028_Mode;Disable;0;0;Disable;
+varAdj_0:200,0,200,80,0x1012,1,0,1000,ushort,+,Loop,Repeat,,,varAdj_0,Enable,Disable,0x0000;
+button_0:0,0,130,80,0x0020,,,Page0001,button_6,Disable,Disable,0x0000,
+icon_0:0xFFFF,2,0x1041,2,90,405,420,70,0410_mode_wifi.jpg,0411_mode_local.jpg,,,0,0,icon_0,Disable;

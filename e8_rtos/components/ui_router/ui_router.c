@@ -1,5 +1,10 @@
 /*
- * ui_router.c - Chia sự kiện màn hình cho từng trang (xem ui_router.h)
+ * ui_router.c - Chia sự kiện màn hình cho từng trang + in tên trang khi đổi trang (xem ui_router.h)
+ *
+ * dispatch() chạy trong task hmi_rx: hỏi lần lượt page_session, page_setting; trang nào nhận thì dừng.
+ * Các page chỉ đưa sự kiện vào hàng đợi của mình rồi trả về ngay.
+ * report_page() là hook trong task logger: in "[Trang] <tên>" mỗi khi màn hình đổi trang; đăng ký
+ * trước page_session để dòng tên trang in trước chi tiết buổi tập.
  */
 #include <stdio.h>
 #include "app_config.h"
@@ -9,7 +14,6 @@
 #include "page_setting.h"
 #include "ui_router.h"
 
-// Chạy trong task hmi_rx: các page chỉ đưa sự kiện vào hàng đợi của mình rồi trả về ngay
 static void dispatch(const hmi_event_t *e)
 {
     if (page_session_on_event(e)) return;
@@ -19,7 +23,6 @@ static void dispatch(const hmi_event_t *e)
 #endif
 }
 
-// Hook trong task logger: in tên trang mỗi khi màn hình đổi trang
 static void report_page(void)
 {
     static int prev_page = -1;
@@ -33,6 +36,6 @@ static void report_page(void)
 
 void ui_router_start(void)
 {
-    logger_add_hook(report_page);        // đăng ký trước page_session để "[Trang]" in trước chi tiết buổi tập
+    logger_add_hook(report_page);
     hmi_set_event_handler(dispatch);
 }

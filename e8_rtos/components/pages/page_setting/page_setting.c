@@ -1,5 +1,15 @@
 /*
- * page_setting.c - Task cài đặt (xem page_setting.h)
+ * page_setting.c - Task "setting": Sismo, mật khẩu, trang cài đặt WiFi / MODE, trang khởi động
+ *
+ * - Sự kiện nút từ ui_router vào hàng đợi riêng; task chờ sự kiện tối đa 50 ms mỗi vòng.
+ * - Giữ Sismo: lần đổi giá trị đầu tiên = bắt đầu giữ (ở trang khác thì về trang chính ngay);
+ *   màn hình báo 0x41 = thả tay (bỏ qua thay đổi còn sót IGNORE_AFTER_RELEASE_MS ngay sau đó);
+ *   dự phòng: quá RELEASE_TIMEOUT_MS không thấy đổi -> coi như đã thả. Giữ đủ SISMO_HOLD_MS -> 0026.
+ * - PASSWORD_TABLE: mỗi mật khẩu mở 1 trang cài đặt; thêm mật khẩu mới chỉ cần thêm 1 dòng.
+ * - Trang 0027: icon mạng ghi lại khi đổi + làm mới mỗi 2 s; không bật AP khi động cơ đang chạy;
+ *   rời trang quá 1 s mà vẫn đang cấu hình -> tắt AP.
+ * - Trang 0028: bấm nút đổi MODE WIFI / MODE LOCAL, lưu settings.json, ghi icon 0x1041.
+ * - Trước khi khởi động lại (Submit WiFi / OTA): đưa màn hình về trang 0.
  */
 #include <stdio.h>
 #include <string.h>
@@ -13,22 +23,21 @@
 #include "network.h"
 #include "page_session.h"
 #include "logger.h"
+#include "device_settings.h"
 #include "page_setting.h"
 
-// ---------------- Thông số ----------------
-#define SETTINGS_PASSWORD         "74700"
-#define SETTINGS_PASSWORD_LEN     5             // đủ 5 số: đúng thì vào cài đặt, sai thì bấm số thứ 6 sẽ xóa
-#define SISMO_HOLD_MS             2000          // giữ "Sismo" 2 s -> vào trang mật khẩu
-#define RELEASE_TIMEOUT_MS        1200          // dự phòng: quá 1,2 s giá trị 0x1012 không đổi -> coi như đã thả tay
-                                                // (bình thường biết thả tay nhờ màn hình báo 0x41 lúc thả)
-#define IGNORE_AFTER_RELEASE_MS   400           // sau khi thả tay, bỏ qua thay đổi còn sót của 0x1012
-#define PAGE_STARTUP_SHOW_MS      3000          // trang 0 hiện 3 s rồi ESP32 tự chuyển sang trang chính
+#define SETTINGS_PASSWORD_LEN     5
+#define SISMO_HOLD_MS             2000
+#define RELEASE_TIMEOUT_MS        1200
+#define IGNORE_AFTER_RELEASE_MS   400
+#define PAGE_STARTUP_SHOW_MS      3000
 
-static QueueHandle_t event_queue;               // sự kiện nút do ui_router chuyển tới
+static QueueHandle_t event_queue;
 
 bool page_setting_on_event(const hmi_event_t *e)
 {
-    if (e->addr != ADDR_SISMO_BUTTON && e->addr != ADDR_PASSWORD_KEY && e->addr != ADDR_SETTINGS_BUTTON)
+    if (e->addr != ADDR_SISMO_BUTTON && e->addr != ADDR_PASSWORD_KEY &&
+        e->addr != ADDR_SETTINGS_BUTTON && e->addr != ADDR_MODE_BUTTON)
         return false;
     if (event_queue) xQueueSend(event_queue, e, 0);
     return true;
@@ -36,12 +45,10 @@ bool page_setting_on_event(const hmi_event_t *e)
 
 static int64_t ms_now(void) { return esp_timer_get_time() / 1000; }
 
-// ---- Giữ "Sismo" ----
 static bool    holding = false;
 static bool    entered_password = false;
 static int64_t hold_start_ms = 0, last_repeat_ms = 0, ignore_until_ms = 0;
 
-// ---- Mật khẩu ----
 static char entered[SETTINGS_PASSWORD_LEN + 1];
 static int  entered_len = 0;
 
@@ -59,11 +66,10 @@ static uint16_t network_icon(net_state_t t)
     switch (t) {
     case NET_CONFIG: return NET_ICON_CONFIG;
     case NET_ONLINE: return NET_ICON_ONLINE;
-    default:         return NET_ICON_OFFLINE;   // OFFLINE và đang kết nối đều hiện OFFLINE
+    default:         return NET_ICON_OFFLINE;
     }
 }
 
-// ---------------- Xử lý từng loại nút ----------------
 static void on_sismo(int page, const hmi_event_t *e)
 {
 #if DEBUG_SISMO_EVENTS
@@ -75,10 +81,8 @@ static void on_sismo(int page, const hmi_event_t *e)
     prev_ms = t;
 #endif
     int64_t now_ms = ms_now();
-    if (now_ms < ignore_until_ms) return;           // thay đổi còn sót ngay sau lúc thả tay
+    if (now_ms < ignore_until_ms) return;
 
-    // Màn hình báo 0x41 lúc THẢ TAY -> kết thúc lần giữ ngay (không chờ hết RELEASE_TIMEOUT_MS).
-    // (Nếu 0x41 tới ngay đầu lần bấm thì hold_start_ms mới vài chục ms -> vẫn coi là đang bấm.)
     if (e->source == EV_SRC_REPORT && holding && now_ms - hold_start_ms > 300) {
         holding = false;
         ignore_until_ms = now_ms + IGNORE_AFTER_RELEASE_MS;
@@ -86,22 +90,38 @@ static void on_sismo(int page, const hmi_event_t *e)
     }
 
     last_repeat_ms = now_ms;
-    if (holding) return;                       // đang giữ: chỉ cập nhật thời điểm lặp
+    if (holding) return;
     holding = true;
     entered_password = false;
     hold_start_ms = last_repeat_ms;
     if (page != PAGE_MAIN) {
-        hmi_goto_page(PAGE_MAIN);              // chạm ở trang khác -> về trang chính ngay
+        hmi_goto_page(PAGE_MAIN);
         log_send("   [CAI DAT] Cham Sismo -> ve trang chinh");
     }
 }
 
 static void start_config(const char *why);
+static void show_mode(void);
 
-// Giống E8 cũ: không có nút xác nhận.
-//   - Đủ 5 số mà đúng 74700 -> tự sang trang cài đặt
-//   - Đủ 5 số mà sai -> đứng yên, bấm thêm 1 số (số thứ 6) -> xóa hết, nhập lại từ đầu
-//   - C -> xóa hết
+static void open_wifi_settings(void)
+{
+    hmi_write(ADDR_NETWORK_ICON, network_icon(net_get_state()));
+    hmi_goto_page(PAGE_SETTINGS);
+}
+
+static void open_mode_settings(void)
+{
+    show_mode();
+    hmi_goto_page(PAGE_MODE);
+}
+
+typedef struct { const char *password; const char *name; void (*open)(void); } password_entry_t;
+static const password_entry_t PASSWORD_TABLE[] = {
+    { "74700", "cai dat WiFi",          open_wifi_settings },
+    { "74710", "che do WIFI / LOCAL",   open_mode_settings },
+};
+#define PASSWORD_COUNT (sizeof(PASSWORD_TABLE) / sizeof(PASSWORD_TABLE[0]))
+
 static void on_password_key(uint16_t key, int page)
 {
 #if DEBUG_SISMO_EVENTS
@@ -111,7 +131,7 @@ static void on_password_key(uint16_t key, int page)
     if (key == KEY_CLEAR) { clear_password(); return; }
     if (key > 9) return;
 
-    if (entered_len >= SETTINGS_PASSWORD_LEN) {        // số thứ 6 -> reset
+    if (entered_len >= SETTINGS_PASSWORD_LEN) {
         log_send("   [CAI DAT] Mat khau sai -> xoa, nhap lai");
         clear_password();
         return;
@@ -120,23 +140,25 @@ static void on_password_key(uint16_t key, int page)
     entered[entered_len] = '\0';
     show_stars();
 
-    if (entered_len == SETTINGS_PASSWORD_LEN && strcmp(entered, SETTINGS_PASSWORD) == 0) {
-        log_send("   [CAI DAT] Mat khau dung -> trang cai dat");
-        clear_password();
-        // Vào trang cài đặt: hiện trạng thái hiện tại (ONLINE / OFFLINE), bấm vào mới bật cấu hình
-        hmi_write(ADDR_NETWORK_ICON, network_icon(net_get_state()));
-        hmi_goto_page(PAGE_SETTINGS);
+    if (entered_len < SETTINGS_PASSWORD_LEN) return;
+    for (size_t i = 0; i < PASSWORD_COUNT; i++) {
+        if (strcmp(entered, PASSWORD_TABLE[i].password) == 0) {
+            log_send("   [CAI DAT] Mat khau %s dung -> trang %s", PASSWORD_TABLE[i].password, PASSWORD_TABLE[i].name);
+            clear_password();
+            PASSWORD_TABLE[i].open();
+            return;
+        }
     }
 }
 
 static void start_config(const char *why)
 {
-    if (net_get_state() == NET_CONFIG) return;             // đang cấu hình rồi
-    if (page_session_get_status().mode == SESSION_RUN) {  // phòng hờ: không bật AP khi động cơ còn chạy
+    if (net_get_state() == NET_CONFIG) return;
+    if (page_session_get_status().mode == SESSION_RUN) {
         log_send("   [CAI DAT] Dong co dang chay -> khong vao che do cau hinh");
         return;
     }
-    hmi_write(ADDR_NETWORK_ICON, NET_ICON_CONFIG);   // hiện "Configuration WIFI" ngay
+    hmi_write(ADDR_NETWORK_ICON, NET_ICON_CONFIG);
     log_send("   [CAI DAT] Bat che do cau hinh (%s): AP %s, mat khau %s, http://%s",
                 why, net_ap_name(), NET_AP_PASSWORD, NET_AP_IP);
     net_config_start();
@@ -145,13 +167,12 @@ static void start_config(const char *why)
 static void stop_config(const char *why)
 {
     if (net_get_state() != NET_CONFIG) return;
-    net_config_stop();                         // tắt AP, về trạng thái hiện tại (ONLINE vẫn là ONLINE)
+    net_config_stop();
     hmi_write(ADDR_NETWORK_ICON, network_icon(net_get_state()));
     log_send("   [CAI DAT] Tat che do cau hinh (%s) -> tat AP, hien %s",
                 why, net_state_name(net_get_state()));
 }
 
-// Nút trên trang cài đặt: OFFLINE/ONLINE -> bấm -> Configuration WIFI; Configuration WIFI -> bấm -> về trạng thái hiện tại
 static void on_settings_button(int page)
 {
     if (page != PAGE_SETTINGS) return;
@@ -159,7 +180,24 @@ static void on_settings_button(int page)
     else                                    start_config("bam OFFLINE");
 }
 
-// ---------------- Task ----------------
+static void show_mode(void)
+{
+    hmi_write(ADDR_MODE_ICON, device_get_control_mode() == CONTROL_MODE_WIFI ? 0 : 1);
+}
+
+static void on_mode_button(int page)
+{
+    if (page != PAGE_MODE) return;
+    control_mode_t m = (device_get_control_mode() == CONTROL_MODE_WIFI) ? CONTROL_MODE_LOCAL : CONTROL_MODE_WIFI;
+    device_set_control_mode(m);
+    show_mode();
+    if (m == CONTROL_MODE_WIFI)
+        log_send("   [CHE DO] -> MODE WIFI: chi cho dong co chay khi ONLINE (hien tai: %s)",
+                 net_state_name(net_get_state()));
+    else
+        log_send("   [CHE DO] -> MODE LOCAL: dong co chay khong can mang");
+}
+
 static void task_setting(void *arg)
 {
     (void)arg;
@@ -182,14 +220,14 @@ static void task_setting(void *arg)
             if      (e.addr == ADDR_SISMO_BUTTON)     on_sismo(page, &e);
             else if (e.addr == ADDR_PASSWORD_KEY) on_password_key(e.value, page);
             else if (e.addr == ADDR_SETTINGS_BUTTON)   on_settings_button(page);
+            else if (e.addr == ADDR_MODE_BUTTON)       on_mode_button(page);
         }
 
         int64_t now = ms_now();
 
-        // ---- Giữ "Sismo": thả tay hay đủ 3 s? ----
         if (holding) {
             if (now - last_repeat_ms > RELEASE_TIMEOUT_MS) {
-                holding = false;                                   // đã thả tay
+                holding = false;
             } else if (!entered_password && now - hold_start_ms >= SISMO_HOLD_MS) {
                 entered_password = true;
                 clear_password();
@@ -198,26 +236,24 @@ static void task_setting(void *arg)
             }
         }
 
-        // ---- Trang 0 (khởi động) không tự chuyển: hiện đủ PAGE_STARTUP_SHOW_MS thì ESP32 đưa sang trang chính ----
         if (page == PAGE_STARTUP) {
             if (!startup_page_since) startup_page_since = now;
             else if (now - startup_page_since >= PAGE_STARTUP_SHOW_MS) {
                 log_send("   [CAI DAT] Trang khoi dong %d ms -> trang chinh", PAGE_STARTUP_SHOW_MS);
                 hmi_goto_page(PAGE_MAIN);
-                startup_page_since = now;                                  // chưa đổi kịp thì 3 s sau ghi lại
+                startup_page_since = now;
             }
         } else {
             startup_page_since = 0;
         }
 
-        // ---- Vừa vào trang mật khẩu (kể cả bằng nút thường) -> xóa ô nhập ----
         if (page != prev_page) {
             if (page == PAGE_PASSWORD) clear_password();
-            if (page == PAGE_SETTINGS)  icon_written = -1;          // ghi lại icon trạng thái
+            if (page == PAGE_SETTINGS)  icon_written = -1;
+            if (page == PAGE_MODE)      show_mode();
             prev_page = page;
         }
 
-        // ---- Icon trạng thái mạng: ghi khi đổi + làm mới mỗi 2 s ----
         net_state_t m = net_get_state();
         if (m != prev_net) {
             log_send("   [MANG] %s", net_state_name(m));
@@ -230,7 +266,6 @@ static void task_setting(void *arg)
             last_icon_write_ms = now;
         }
 
-        // ---- Rời trang cài đặt khi đang cấu hình (quá 1 s) -> tắt AP, về chế độ thường ----
         if (m == NET_CONFIG && page >= 0 && page != PAGE_SETTINGS) {
             if (!left_page_ms) left_page_ms = now;
             else if (now - left_page_ms > 1000) {
@@ -243,11 +278,10 @@ static void task_setting(void *arg)
     }
 }
 
-// Submit WiFi trên web: trước khi ESP32 khởi động lại, đưa màn hình về trang 0 (như lúc mới bật máy)
 static void before_restart(void)
 {
     hmi_goto_page(PAGE_STARTUP);
-    vTaskDelay(pdMS_TO_TICKS(30));               // chờ lệnh gửi xong qua UART
+    vTaskDelay(pdMS_TO_TICKS(30));
 }
 
 void page_setting_start(void)

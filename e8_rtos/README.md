@@ -12,6 +12,7 @@ e8_rtos/
 ├── main/main.c               khởi động: watchdog + gọi *_start() của từng module
 └── components/
     ├── app_config/           bảng task (ưu tiên / stack / core), watchdog, cờ gỡ lỗi
+    ├── device_settings/      cài đặt lưu flash /spiffs/settings.json (MODE WIFI / LOCAL ...), gắn SPIFFS
     ├── logger/               task logger: log_send() + hook in báo cáo định kỳ
     ├── hmi/                  UART màn hình (task hmi_rx, hmi_poll)
     │   └── include/hmi_map.h số trang, địa chỉ biến của UI — sửa UI thì sửa file này
@@ -19,7 +20,7 @@ e8_rtos/
     ├── ui_router/            chia sự kiện màn hình cho từng trang
     ├── pages/
     │   ├── page_session/     trang buổi tập 6/8/10/11: động cơ, cường độ, Xung, an toàn (task session)
-    │   └── page_setting/     Sismo, mật khẩu 74700, cài đặt WiFi, trang khởi động (task setting)
+    │   └── page_setting/     Sismo, mật khẩu, 74700 cài đặt WiFi, 74710 MODE WIFI/LOCAL, trang khởi động (task setting)
     ├── network/              WiFi STA + AP cấu hình, web 192.168.10.100, wifi.json
     └── ota/                  cập nhật firmware qua web + rollback
 ```
@@ -43,7 +44,16 @@ màn hình ──UART──► hmi_rx ──► ui_router ──► page_session
 ```
 Mỗi page nhận sự kiện thì đưa vào hàng đợi của mình rồi trả về ngay; task của page xử lý sau.
 
-## Thêm 1 trang mới (vd. trang cài đặt 74710)
+## Trang cài đặt theo mật khẩu
+
+| Mật khẩu | Trang | Nội dung |
+|---|---|---|
+| 74700 | 0027 | WiFi: OFFLINE / ONLINE → Configuration WIFI (AP + web) |
+| 74710 | 0028 | MODE WIFI (phải ONLINE mới cho động cơ chạy) / MODE LOCAL (không cần mạng) |
+
+Thêm mật khẩu mới: thêm 1 dòng vào `PASSWORD_TABLE` trong `page_setting.c`.
+
+## Thêm 1 trang mới
 
 1. Tạo `components/pages/page_xxx/` gồm `page_xxx.c`, `include/page_xxx.h`, `CMakeLists.txt`
    (chép từ `page_setting`).

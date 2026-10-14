@@ -1,5 +1,14 @@
 /*
  * ota.c - Cập nhật firmware qua mạng + rollback (xem ota.h)
+ *
+ * - ota_start(): in phiên bản / vùng đang chạy; nếu firmware đang "chờ xác nhận" thì hẹn
+ *   OTA_SELFTEST_MS (15 s) rồi gọi esp_ota_mark_app_valid_cancel_rollback().
+ * - Nạp firmware: gom đủ phần đầu file (esp_image_header_t + segment header + esp_app_desc_t),
+ *   kiểm tra magic 0xE9 và tên project trùng với firmware đang chạy rồi mới ghi vào flash;
+ *   ghi tuần tự (OTA_WITH_SEQUENTIAL_WRITES) để không phải xóa cả vùng một lúc.
+ *   esp_ota_end() kiểm tra checksum / SHA-256 toàn bộ ảnh trước khi đổi vùng khởi động.
+ * - Đang "chờ xác nhận" thì không cho nạp tiếp (ESP_ERR_OTA_ROLLBACK_INVALID_STATE).
+ * - ota_rollback(): đặt vùng còn lại làm vùng khởi động nếu ở đó có firmware hợp lệ.
  */
 #include <stdio.h>
 #include <string.h>
@@ -12,7 +21,6 @@
 
 static const char *TAG = "OTA";
 
-// ---------------- Thông tin firmware ----------------
 void ota_get_info(ota_info_t *info)
 {
     memset(info, 0, sizeof(*info));
@@ -36,7 +44,6 @@ void ota_get_info(ota_info_t *info)
         snprintf(info->other_version, sizeof(info->other_version), "%s", d.version);
 }
 
-// ---------------- Tự xác nhận firmware mới ----------------
 static void confirm_app(void *arg)
 {
     (void)arg;
@@ -56,7 +63,6 @@ void ota_start(void)
              i.other_version[0] ? "" : " | vung con lai: trong");
     if (i.other_version[0]) ESP_LOGI(TAG, "Vung con lai co firmware v%s", i.other_version);
 
-    // Vừa bị quay về bản cũ? (firmware mới đã hỏng trước khi kịp xác nhận)
     const esp_partition_t *bad = esp_ota_get_last_invalid_partition();
     if (bad) ESP_LOGW(TAG, "Firmware o vung %s bi loi truoc khi xac nhan -> da quay ve ban dang chay", bad->label);
 
@@ -69,8 +75,6 @@ void ota_start(void)
     }
 }
 
-// ---------------- Nạp firmware ----------------
-// Giữ lại phần đầu file đến hết esp_app_desc_t để kiểm tra trước khi ghi gì vào flash
 #define HEAD_NEED (sizeof(esp_image_header_t) + sizeof(esp_image_segment_header_t) + sizeof(esp_app_desc_t))
 
 static esp_ota_handle_t handle;
@@ -120,7 +124,7 @@ bool ota_upload_write(const void *data, size_t len, const char **err)
     if (!active) { *err = "Update not started."; return false; }
     const uint8_t *p = (const uint8_t *)data;
 
-    if (!head_checked) {                                    // gom đủ phần đầu file rồi mới kiểm tra
+    if (!head_checked) {
         size_t k = HEAD_NEED - head_len;
         if (k > len) k = len;
         memcpy(head + head_len, p, k);
@@ -142,7 +146,7 @@ bool ota_upload_finish(const char **err)
 {
     if (!active || !head_checked || written != expected) { *err = "Incomplete file."; ota_upload_abort(); return false; }
     active = false;
-    esp_err_t e = esp_ota_end(handle);                      // kiểm tra checksum / SHA-256 toàn bộ ảnh
+    esp_err_t e = esp_ota_end(handle);
     if (e != ESP_OK) { *err = "Invalid firmware file (checksum)."; return false; }
     if (esp_ota_set_boot_partition(target) != ESP_OK) { *err = "Cannot set boot partition."; return false; }
     ESP_LOGI(TAG, "Nap xong %u byte vao %s -> khoi dong lai se chay firmware moi", (unsigned)written, target->label);
@@ -155,7 +159,6 @@ void ota_upload_abort(void)
     active = false;
 }
 
-// ---------------- Quay về bản trước (bấm nút trên web) ----------------
 bool ota_rollback(const char **err)
 {
     if (!esp_ota_check_rollback_is_possible()) { *err = "No previous firmware to roll back to."; return false; }

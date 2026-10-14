@@ -1,5 +1,23 @@
 /*
- * page_session.c - Task điều khiển (xem page_session.h)
+ * page_session.c - Task "session": điều khiển động cơ CM8 theo màn hình + an toàn (xem page_session.h)
+ *
+ * Khởi động an toàn: chỉ ĐỌC CM8 trước. CM8 đã có Mode (ESP32 vừa reset giữa chừng) -> DỪNG,
+ * không dùng "chỉ quạt" (CM8 nhớ Mode, lệnh 1 sẽ làm động cơ quay chậm nhất). ESP32 vừa khởi động
+ * lại vì lỗi (watchdog / crash) hoặc mất liên lạc màn hình giữa buổi tập -> bắt màn hình tạm dừng,
+ * người dùng phải bấm ▶ lại.
+ *
+ * Cho chạy khi: còn liên lạc màn hình, đang ở trang buổi tập, 0x1001 = 1, không bị bắt dừng, và
+ * (MODE LOCAL hoặc ONLINE). MODE WIFI mà chưa có mạng -> ghi 0x1001 = 0 (tạm dừng).
+ *
+ * Cường độ / Xung: bình thường nút +/- và đồng hồ cùng dùng 0x1000, màn hình tự vẽ (nhấn giữ mượt),
+ * ESP32 chỉ ĐỌC. Đang tập + bật Xung: ESP32 ghi mức dao động tam giác ±PULSE_AMPLITUDE (mỗi
+ * PULSE_STEP_MS đổi 1 mức) vào 0x1000; lần bấm +/- lúc đó chỉ lấy chiều bấm để đổi cường độ gốc;
+ * tắt Xung thì ghi trả cường độ gốc và chờ màn hình nhận (SCREEN_SYNC_MS).
+ * Cường độ 1..32 -> tốc độ CM8 0..32 làm tròn xuống số CHẴN (CM8 chỉ đứng yên đúng ở số chẵn).
+ *
+ * Thông số: RUN_MODE 3 / RUN_RATIO 9 (tạm, chưa có giá trị chính thức), giới hạn dòng 3,70 A,
+ * PREPARE_TIMEOUT_MS chờ CM8 về 0 trước lần chạy đầu, PAUSE_SCREEN_ON_ERROR: CM8 lỗi / mất kết nối
+ * khi đang tập -> tạm dừng màn hình.
  */
 #include <stdio.h>
 #include "freertos/FreeRTOS.h"
@@ -12,22 +30,22 @@
 #include "hmi.h"
 #include "motor_modbus.h"
 #include "logger.h"
+#include "device_settings.h"
+#include "network.h"
 #include "page_session.h"
 
-// ---------------- Thông số CM8 / cường độ / Xung ----------------
-#define RUN_MODE                  3             // Mode khi động cơ chạy (CHƯA có giá trị chính thức -> tạm 3)
-#define RUN_RATIO                 9             // Ratio (code CM8 lấy 9 làm chuẩn)
-#define CURRENT_LIMIT_X100        370           // 3,70 A
-#define SPEED_MAX                 32            // tốc độ CM8 0..32 (CM8 chỉ dừng đúng ở số CHẴN)
-#define SPEED_EVEN_ONLY           1             // 1: chỉ gửi tốc độ chẵn; 0: gửi đủ 0..32 (số lẻ CM8 dao động ±1)
-#define PREPARE_TIMEOUT_MS        3000          // chờ CM8 về trạng thái 0 trước lần chạy đầu (tối đa)
-#define PAUSE_SCREEN_ON_ERROR     1             // 1: CM8 lỗi / mất kết nối khi đang tập -> ghi 0x1001 = 0
-#define PULSE_AMPLITUDE           2             // Xung dao động ± 2 mức
-#define PULSE_STEP_MS             300           // mỗi 300 ms đổi 1 mức
-#define SCREEN_SYNC_MS            600           // sau khi ghi trả cường độ, chờ màn hình cập nhật tối đa
-#define SESSION_PERIOD_MS         50            // chu kỳ task session
+#define RUN_MODE                  3
+#define RUN_RATIO                 9
+#define CURRENT_LIMIT_X100        370
+#define SPEED_MAX                 32
+#define SPEED_EVEN_ONLY           1
+#define PREPARE_TIMEOUT_MS        3000
+#define PAUSE_SCREEN_ON_ERROR     1
+#define PULSE_AMPLITUDE           2
+#define PULSE_STEP_MS             300
+#define SCREEN_SYNC_MS            600
+#define SESSION_PERIOD_MS         50
 
-// Các lần bấm +/- (0x41 của 0x1000): cần từng lần bấm khi đang Xung (lúc đó 0x1000 do ESP32 ghi dao động)
 static QueueHandle_t touch_queue;
 
 static const char *MODE_NAMES[] = {"CHI QUAT", "CHUAN BI", "CHAY", "DUNG"};
@@ -56,16 +74,15 @@ bool page_session_on_event(const hmi_event_t *e)
     return true;
 }
 
-// Cường độ 1..32 -> tốc độ CM8 0..32, làm tròn xuống số CHẴN
 static uint16_t level_to_speed(int level)
 {
     if (level <= 1) return 0;
     int v = (level - 1) * SPEED_MAX / 31;
     if (v > SPEED_MAX) v = SPEED_MAX;
 #if SPEED_EVEN_ONLY
-    return (uint16_t)(v & ~1);     // CM8 đứng yên đúng mức, nhưng chỉ có 17 mức 0,2,4..32
+    return (uint16_t)(v & ~1);
 #else
-    return (uint16_t)v;            // đủ 33 mức; số lẻ thì CM8 dao động ±1 mức mỗi 50 ms quanh giá trị đó
+    return (uint16_t)v;
 #endif
 }
 
@@ -77,7 +94,6 @@ static void change_mode(session_motor_t next)
     log_send("   [CM8] -> %s", MODE_NAMES[next]);
 }
 
-// Độ lệch Xung tính từ lúc bật Xung: tam giác 0,+1,+2,+1,0,-1,-2,-1 (biên độ 2)
 static int64_t pulse_start_ms = 0;
 static int pulse_offset(void)
 {
@@ -90,21 +106,16 @@ static int pulse_offset(void)
 
 static int clamp(int v, int lo, int hi) { return v < lo ? lo : (v > hi ? hi : v); }
 
-// ---- Cường độ / Xung ----
-// Bình thường: nút +/- và đồng hồ cùng dùng 0x1000, màn hình tự vẽ -> nhấn giữ mượt,
-// ESP32 chỉ ĐỌC 0x1000. Khi đang tập + bật Xung: ESP32 ghi mức dao động vào 0x1000 (đồng hồ
-// dao động theo), còn cường độ người dùng chọn giữ riêng trong base_intensity; tắt Xung thì ghi trả lại.
-static int     base_intensity = 0;            // cường độ người dùng chọn 0..31
-static bool    pulse_active = false;     // ESP32 đang ghi dao động vào 0x1000
-static int     pulse_written = -1;        // giá trị dao động ghi gần nhất
-static int64_t screen_sync_until = 0;  // đang chờ màn hình nhận giá trị trả lại
+static int     base_intensity = 0;
+static bool    pulse_active = false;
+static int     pulse_written = -1;
+static int64_t screen_sync_until = 0;
 
 static void update_intensity(const hmi_data_t *d)
 {
     uint16_t v;
     while (xQueueReceive(touch_queue, &v, 0) == pdTRUE) {
         if (pulse_active) {
-            // Màn hình cộng/trừ trên giá trị dao động đang hiện -> chỉ lấy chiều bấm
             int delta = (v > pulse_written) ? 1 : ((int)v < pulse_written ? -1 : 0);
             base_intensity = clamp(base_intensity + delta, 0, 31);
         }
@@ -121,10 +132,6 @@ static void task_session(void *arg)
     (void)arg;
     esp_task_wdt_add(NULL);
 
-    // ---- 1. Khởi động an toàn ----
-    // Chỉ ĐỌC CM8 trước (chưa gửi lệnh) để biết CM8 vừa bật hay đã chạy từ trước.
-    // Nếu CM8 đã có Mode (ESP32 vừa bị reset giữa chừng) thì KHÔNG dùng chế độ "chỉ quạt",
-    // vì CM8 nhớ Mode -> lệnh 1 sẽ làm động cơ quay ở tốc độ thấp nhất.
     int64_t t0 = ms_now();
     motor_status_t t = motor_get_status();
     while (t.ok_count == 0 && ms_now() - t0 < 1500) {
@@ -141,8 +148,6 @@ static void task_session(void *arg)
     }
     mode_changed_ms = ms_now();
 
-    // Nếu ESP32 vừa khởi động lại vì lỗi (watchdog, crash) thì bắt màn hình tạm dừng buổi tập,
-    // người dùng phải bấm ▶ lại -> động cơ không tự chạy lại khi chưa ai để ý.
     esp_reset_reason_t reset_reason = esp_reset_reason();
     bool pause_required = (reset_reason == ESP_RST_TASK_WDT || reset_reason == ESP_RST_INT_WDT ||
                              reset_reason == ESP_RST_WDT || reset_reason == ESP_RST_PANIC);
@@ -150,7 +155,6 @@ static void task_session(void *arg)
     int64_t last_pause_write_ms = 0;
     bool link_prev = false, running_prev = false;
 
-    // ---- 2. Vòng điều khiển, chu kỳ đều 50 ms ----
     TickType_t wake = xTaskGetTickCount();
     while (1) {
         vTaskDelayUntil(&wake, pdMS_TO_TICKS(SESSION_PERIOD_MS));
@@ -160,8 +164,6 @@ static void task_session(void *arg)
         t = motor_get_status();
         bool link_ok = hmi_is_linked(&d);
 
-        // Mất liên lạc màn hình giữa buổi tập: khi có lại liên lạc cũng bắt tạm dừng,
-        // không để động cơ tự chạy lại
         if (link_prev && !link_ok && running_prev) {
             pause_required = true;
             pause_reason = "Vua mat lien lac man hinh giua buoi tap";
@@ -180,30 +182,37 @@ static void task_session(void *arg)
             }
         }
 
-        bool run_allowed = link_ok && !pause_required &&
-                        (d.page < 0 || hmi_is_session_page(d.page)) && d.vars[VAR_RUN] == 1;
+        bool on_session = (d.page < 0 || hmi_is_session_page(d.page));
+        bool net_ok = device_get_control_mode() == CONTROL_MODE_LOCAL || net_get_state() == NET_ONLINE;
+        static int64_t last_net_block_ms = 0;
+        if (link_ok && on_session && d.vars[VAR_RUN] == 1 && !net_ok && ms_now() - last_net_block_ms >= 500) {
+            last_net_block_ms = ms_now();
+            hmi_write(ADDR_RUN, 0);
+            log_send("   [CHE DO] MODE WIFI nhung chua co mang (%s) -> khong cho dong co chay, tam dung",
+                     net_state_name(net_get_state()));
+        }
 
-        // ---- Cường độ + Xung ----
+        bool run_allowed = link_ok && !pause_required && on_session && net_ok && d.vars[VAR_RUN] == 1;
+
         update_intensity(&d);
         bool want_pulse = run_allowed && d.vars[VAR_PULSE] == 1;
         if (want_pulse && !pulse_active) {
             pulse_active = true;
-            pulse_written = base_intensity;             // màn hình đang hiện đúng base_intensity
+            pulse_written = base_intensity;
             pulse_start_ms = ms_now();
         } else if (!want_pulse && pulse_active) {
             pulse_active = false;
-            hmi_write(ADDR_INTENSITY, (uint16_t)base_intensity);          // trả lại cường độ đã chọn
+            hmi_write(ADDR_INTENSITY, (uint16_t)base_intensity);
             screen_sync_until = ms_now() + SCREEN_SYNC_MS;
         }
         int target_level = run_allowed ? clamp(base_intensity + 1 + (pulse_active ? pulse_offset() : 0), 1, 32) : 0;
         if (pulse_active && target_level - 1 != pulse_written) {
             pulse_written = target_level - 1;
-            hmi_write(ADDR_INTENSITY, (uint16_t)pulse_written);       // đồng hồ dao động theo
+            hmi_write(ADDR_INTENSITY, (uint16_t)pulse_written);
         }
         running_prev = run_allowed;
         bool cm8_ok = t.connected && t.error == 0;
 
-        // ---- Chuyển chế độ ----
         switch (mode) {
         case SESSION_FAN_ONLY:
             if (run_allowed && cm8_ok) change_mode(SESSION_PREPARE);
@@ -222,7 +231,6 @@ static void task_session(void *arg)
             break;
         }
 
-        // ---- Giá trị gửi CM8 (task cm8 tự gửi đi) ----
         uint16_t speed = 0;
         switch (mode) {
         case SESSION_FAN_ONLY:
@@ -246,7 +254,6 @@ static void task_session(void *arg)
         shared_status.intensity = base_intensity;
         portEXIT_CRITICAL(&lock);
 
-        // ---- CM8 lỗi / mất kết nối khi đang tập -> màn hình tạm dừng ----
         static int64_t last_error_log_ms = 0;
         if (run_allowed && !cm8_ok && ms_now() - last_error_log_ms >= 1000) {
             last_error_log_ms = ms_now();
@@ -258,7 +265,6 @@ static void task_session(void *arg)
 #endif
         }
 
-        // ---- Báo khi kết nối / lỗi CM8 thay đổi ----
         static int connected_prev = -1, error_prev = -1;
         if ((int)t.connected != connected_prev || (t.connected && (int)t.error != error_prev)) {
             if (t.connected) log_send("   [CM8] Ket noi OK | Loi %u (%s)", t.error, motor_error_name(t.error));
@@ -269,7 +275,6 @@ static void task_session(void *arg)
     }
 }
 
-// ======================= In tiến trình buổi tập (hook chạy trong task logger) =======================
 static const char *PROGRAM_TITLES[22] = {
     "Tonification - Bras", "Tonification - Poitrine Bras", "Tonification - Sangle abdominale",
     "Tonification - Cuisses Fessiers", "Tonification - Complet",
@@ -321,7 +326,7 @@ static void report_progress(void)
     bool page_known = (d.page >= 0);
     char t1[64], t2[16], t3[96];
 
-    if (page_known && d.page != prev_page) {           // vừa vào trang (tên trang do ui_router in)
+    if (page_known && d.page != prev_page) {
         if (hmi_is_session_page(d.page)) {
             program_name(&d, t1, sizeof(t1));
             mmss(d.vars[VAR_SECONDS], t2, sizeof(t2));

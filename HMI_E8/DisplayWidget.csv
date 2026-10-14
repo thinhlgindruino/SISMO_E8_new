@@ -20,3 +20,4 @@ PageID,WidgetName,Name    ,WriteAddr,Length,ParameterAddr,Length
 11,icon_2,icon_2,0x1005,2,0xFFFF,14
 26,icon_0,icon_0,0x1039,2,0xFFFF,14
 27,icon_0,icon_0,0x1040,2,0xFFFF,14
+28,icon_0,icon_0,0x1041,2,0xFFFF,14

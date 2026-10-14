@@ -1,5 +1,11 @@
 /*
- * logger.c - Task in log (xem logger.h)
+ * logger.c - Task "logger": in log ra Monitor + chạy các hook báo cáo định kỳ
+ *
+ * - log_send(): định dạng chuỗi rồi đưa vào hàng đợi 16 dòng × 160 byte, không chờ
+ *   (đầy thì bỏ dòng đó) -> task gọi không bao giờ bị chậm vì log.
+ * - Task chờ dòng log tối đa 100 ms, in hết các dòng đang chờ, rồi gọi lần lượt các hook đã đăng ký.
+ * - DEBUG_TASK_STATS: mỗi 30 s in stack còn trống của từng task và heap còn trống
+ *   (còn < ~500 byte là nên tăng stack task đó).
  */
 #include <stdio.h>
 #include <stdarg.h>
@@ -28,17 +34,15 @@ void log_send(const char *fmt, ...)
     va_start(ap, fmt);
     vsnprintf(line, sizeof(line), fmt, ap);
     va_end(ap);
-    xQueueSend(log_queue, line, 0);   // 0 = không chờ; đầy thì bỏ dòng này
+    xQueueSend(log_queue, line, 0);
 }
 
-// Gọi lúc khởi động (trước khi các task chạy ổn định), theo thứ tự đăng ký
 void logger_add_hook(void (*hook)(void))
 {
     if (hook && hook_count < LOGGER_MAX_HOOKS) hooks[hook_count++] = hook;
 }
 
 #if DEBUG_TASK_STATS
-// Stack còn trống ít nhất từ lúc chạy (ESP-IDF: tính bằng byte). Còn < ~500 byte là nên tăng stack.
 static void print_task_stats(void)
 {
     static const char *TASK_NAMES[] = {"session", "motor", "hmi_rx", "hmi_poll", "logger", "setting"};
@@ -57,7 +61,6 @@ static void task_logger(void *arg)
     char line[LOG_LINE_LEN];
     int64_t last_stats_ms = ms_now();
     while (1) {
-        // Chờ dòng log tối đa 100 ms, rồi in hết các dòng đang chờ
         if (xQueueReceive(log_queue, line, pdMS_TO_TICKS(100)) == pdTRUE) {
             printf("%s\n", line);
             while (xQueueReceive(log_queue, line, 0) == pdTRUE) printf("%s\n", line);

@@ -1,8 +1,14 @@
 /*
- * motor_modbus.c - Task Modbus RTU master cho mạch CM8 (xem motor_modbus.h)
- *   - Chưa có lệnh (motor_set chưa được gọi) thì chỉ ĐỌC, để task điều khiển biết
- *     CM8 vừa bật hay đã chạy từ trước. Đọc cũng tính là tin nhắn nên CM8 không báo lỗi 2.
- *   - Mỗi vòng báo watchdog "còn sống".
+ * motor_modbus.c - Task "motor": Modbus RTU master cho mạch CM8 (xem motor_modbus.h)
+ *
+ * - Mỗi giao dịch: xóa bộ đệm nhận, nghỉ > 3,5 ký tự, gửi khung + CRC16, chờ đủ số byte trả lời
+ *   (tối đa 300 ms), kiểm tra CRC. Nghỉ 50 ms giữa 2 giao dịch.
+ * - Luân phiên GHI (FC16, reg 0..14) rồi ĐỌC (FC03, reg 0..28). Chưa có lệnh (motor_set chưa được
+ *   gọi) thì chỉ ĐỌC, để task session biết CM8 vừa bật hay đã chạy từ trước; đọc cũng tính là
+ *   tin nhắn nên CM8 không báo lỗi 2.
+ * - Lưu vài byte nhận gần nhất + cờ "nghe lại chính mình" (TX nối vòng về RX) để chẩn đoán dây.
+ * - Giá trị đặt / trạng thái đọc về dùng chung giữa các task qua critical section.
+ * - Mỗi vòng báo watchdog "còn sống" (1 vòng tối đa ~0,8 s < 3 s).
  */
 #include <stdio.h>
 #include <string.h>
@@ -14,19 +20,17 @@
 #include "app_config.h"
 #include "motor_modbus.h"
 
-#define TIMEOUT_MS        300    // chờ CM8 trả lời tối đa
-#define GAP_MS      50     // nghỉ giữa 2 giao dịch (giống control_motor: ~100 ms/chu kỳ)
-#define LINK_LOST_COUNT     5      // 5 lần liên tiếp không trả lời => báo mất kết nối
+#define TIMEOUT_MS        300
+#define GAP_MS      50
+#define LINK_LOST_COUNT     5
 
-#define WRITE_REG_COUNT        15     // ghi reg 0..14 (giống telegram[0] của control_motor)
-#define READ_REG_COUNT        29     // đọc reg 0..28
+#define WRITE_REG_COUNT        15
+#define READ_REG_COUNT        29
 
-// ---- Giá trị muốn gửi (main đặt) ----
 static portMUX_TYPE lock = portMUX_INITIALIZER_UNLOCKED;
 static uint16_t set_cmd = MOTOR_CMD_STOP, set_speed = 0, set_current = 0, set_mode = 0, set_ratio = 0;
-static bool     has_cmd = false;      // đã có lệnh từ task điều khiển chưa
+static bool     has_cmd = false;
 
-// ---- Trạng thái đọc về ----
 static motor_status_t status;
 
 static int64_t ms_now(void) { return esp_timer_get_time() / 1000; }
@@ -46,7 +50,6 @@ static bool crc_ok(const uint8_t *d, int n)
     return n >= 4 && (uint16_t)(d[n - 2] | (d[n - 1] << 8)) == crc16_modbus(d, n - 2);
 }
 
-// Gửi khung (tự thêm CRC), chờ đủ 'expected' byte. Trả về số byte nhận được.
 static int transact(uint8_t *frame, int n, uint8_t *reply, int expected)
 {
     uint16_t c = crc16_modbus(frame, n);
@@ -54,7 +57,7 @@ static int transact(uint8_t *frame, int n, uint8_t *reply, int expected)
     frame[n++] = c >> 8;
 
     uart_flush_input(MOTOR_UART);
-    vTaskDelay(pdMS_TO_TICKS(5));                       // khoảng lặng > 3,5 ký tự
+    vTaskDelay(pdMS_TO_TICKS(5));
     uart_write_bytes(MOTOR_UART, (const char *)frame, n);
     uart_wait_tx_done(MOTOR_UART, pdMS_TO_TICKS(100));
 
@@ -65,20 +68,18 @@ static int transact(uint8_t *frame, int n, uint8_t *reply, int expected)
         if (k > 0) got += k;
     }
 
-    // Ghi lại để chẩn đoán: nhận được bao nhiêu byte, có phải đang nghe lại chính mình không
     if (got > 0) {
         portENTER_CRITICAL(&lock);
         status.rx_bytes_total += got;
         status.sample_len = got < 8 ? got : 8;
         memcpy(status.sample, reply, status.sample_len);
-        if (frame[1] == 0x03)   // chỉ xét với lệnh đọc (trả lời thật bắt đầu 01 03 3A..., khác khung gửi)
+        if (frame[1] == 0x03)
             status.echo = (got >= 6 && memcmp(reply, frame, 6) == 0);
         portEXIT_CRITICAL(&lock);
     }
     return got;
 }
 
-// FC16: ghi reg 0..14 một lần (lệnh, tốc độ, giới hạn dòng, mode, ratio; còn lại = 0)
 static bool write_command_block(void)
 {
     uint16_t v[WRITE_REG_COUNT] = {0};
@@ -99,7 +100,6 @@ static bool write_command_block(void)
     return k == 8 && crc_ok(r, 8) && r[0] == MOTOR_SLAVE_ID && r[1] == 0x10;
 }
 
-// FC03: đọc reg 0..28
 static bool read_status(void)
 {
     uint8_t f[8] = {MOTOR_SLAVE_ID, 0x03, 0x00, 0x00, 0x00, READ_REG_COUNT};
@@ -140,7 +140,6 @@ static void task_motor(void *arg)
     esp_task_wdt_add(NULL);
     int fail_streak = 0;
     while (1) {
-        // Luân phiên GHI rồi ĐỌC (sửa lỗi u8query của control_motor: chỉ có 2 telegram 0 và 1)
         portENTER_CRITICAL(&lock);
         bool do_write = has_cmd;
         portEXIT_CRITICAL(&lock);
@@ -150,7 +149,7 @@ static void task_motor(void *arg)
         }
         update_counters(read_status(), &fail_streak);
         vTaskDelay(pdMS_TO_TICKS(GAP_MS));
-        esp_task_wdt_reset();               // 1 vòng tối đa ~0,8 s (2 lần chờ 300 ms) < 3 s
+        esp_task_wdt_reset();
     }
 }
 

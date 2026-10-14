@@ -1,0 +1,13 @@
+﻿Page:,0x0000,,0x0000,,0x0000,,0x0000,0737_P1.jpg;RGBColor(0,0,0);Tonification;Disable;0;0;Disable;
+button_0:0,1,133,79,0x0020,,,Page0004,button_0,Disable,Disable,0x0000,
+button_1:186,1,219,78,0x0020,,,Page0001,button_1,Disable,Disable,0x0000,
+icon_0:0xFFFF,2,0x001E,2,6,454,180,80,0480_name1_81.jpg,0485_name6_81.jpg,,1,1,6,icon_0,Disable;
+icon_1:0xFFFF,2,0x001E,2,209,456,180,80,0486_name1_82.jpg,0491_name6_82.jpg,,1,1,6,icon_1,Disable;
+icon_2:0xFFFF,2,0x001E,2,409,456,180,80,0492_name1_83.jpg,0497_name6_83.jpg,,1,1,6,icon_2,Disable;
+icon_3:0xFFFF,2,0x001E,2,9,921,180,80,0498_name1_84.jpg,0503_name6_84.jpg,,1,1,6,icon_3,Disable;
+icon_4:0xFFFF,2,0x001E,2,211,923,180,80,0504_name1_85.jpg,0509_name6_85.jpg,,1,1,6,icon_4,Disable;
+button_2:4,83,191,456,0x0020,,,Page0011,button_2,Disable,Disable,0x0000,
+button_3:199,84,196,449,0x0020,,,Page0012,button_3,Disable,Disable,0x0000,
+button_4:404,89,194,449,0x0020,,,Page0013,button_4,Disable,Disable,0x0000,
+button_5:1,546,193,461,0x0020,,,Page0014,button_5,Disable,Disable,0x0000,
+button_6:203,544,199,459,0x0020,,,Page0015,button_6,Disable,Disable,0x0000,

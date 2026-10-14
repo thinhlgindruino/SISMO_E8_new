@@ -1,0 +1,10 @@
+﻿Page:,0x0000,,0x0000,,0x0000,,0x0000,0737_P1.jpg;RGBColor(0,0,0);Password 1;Disable;0;0;Disable;
+button_0:0,0,133,79,0x0020,,,Page0001,button_0,Disable,Disable,0x0000,
+button_1:186,1,219,78,0x0020,,,Page0001,button_1,Disable,Disable,0x0000,
+icon_0:0xFFFF,2,0x0039,2,0,96,600,40,0366_name1_62.jpg,0377_name6_63.jpg,,1,1,12,icon_0,Disable;
+icon_1:0xFFFF,2,0x0039,2,109,441,380,50,0588_name1_card1.jpg,0599_name6_card2.jpg,,1,1,12,icon_1,Disable;
+icon_2:0xFFFF,2,0x001E,2,154,591,280,40,0639_name_lg_1.jpg,0644_name_lg_6.jpg,,,0,0,icon_2,Disable;
+varAdj_0:164,564,278,83,0x001E,1,1,6,ushort,+,Loop,Once,,,varAdj_0,Enable,Disable,0x0000;
+button_2:104,438,171,59,0x0106,,,,button_2,Disable,Disable,0x0000,
+button_3:321,443,169,53,0x0107,,,,button_3,Disable,Disable,0x0000,
+varAdj_1:189,231,168,59,0x0039,1,1,12,ushort,+,Loop,Once,,,varAdj_1,Disable,Enable,0x0000;

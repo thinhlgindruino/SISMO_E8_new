@@ -1,0 +1,15 @@
+﻿Page:,0x0000,,0x0000,,0x0000,,0x0000,0737_P1.jpg;RGBColor(0,0,0);Power Control;Disable;0;0;Disable;
+button_0:0,1,133,79,0x0020,,,Page0002,button_0,Disable,Disable,0x0000,
+button_1:184,0,219,78,0x0020,,,Page0001,button_1,Disable,Disable,0x0000,
+icon_0:0xFFFF,2,0x000B,2,0,141,600,586,0797_t_1.png,0828_t_32.png,,1,1,32,icon_0,Enable;
+icon_1:0xFFFF,2,0x000C,2,0,788,600,80,0855_v_17.jpg,,,,0,0,icon_1,Disable;
+icon_2:0xFFFF,2,0x000D,2,0,869,600,80,0854_v_16.jpg,,,,0,0,icon_2,Disable;
+varAdj_0:13,791,154,71,0x000B,1,1,32,ushort,-,Stop,Repeat,,,varAdj_0,Enable,Disable,0x0000;
+varAdj_1:434,796,154,66,0x000B,1,1,32,ushort,+,Stop,Repeat,,,varAdj_1,Enable,Disable,0x0000;
+varAdj_2:16,864,149,71,0x0010,1,0,1,ushort,+,Loop,Once,,,varAdj_2,Enable,Disable,0x0000;
+varAdj_3:234,866,128,76,0x0015,1,0,1,ushort,+,Loop,Once,,,varAdj_3,Enable,Disable,0x0000;
+button_2:453,864,114,76,0x0100,,,,button_2,Enable,Disable,0x0000,
+uitimer_0:0xFFFF,34,159,150,45,0x0012,0,0x0013,300,0x0014,0,0721_nb_manual_0.jpg,0734_nb_manual_13.png,MM:SS,-,Disable,Enable,uitimer_0,0xFFFF,0xFFFF,0xFFFF,0xFFFF,0xFFFF,0xFFFF,0xFFFF,0xFFFF,0xFFFF,0xFFFF,0xFFFF,0xFFFF,0xFFFF,0xFFFF,0xFFFF,0xFFFF;
+bitIcon_0:0xFFFF,0x0010,0,36,868,110,70,0843_v_5.jpg,0844_v_6.jpg,Disable,bitIcon_0;
+bitIcon_1:0xFFFF,0x0014,0,243,869,110,70,0845_v_7.jpg,0846_v_8.jpg,Disable,bitIcon_1;
+button_3:254,803,96,39,0x0020,,,,button_3,Disable,Enable,0x0105,

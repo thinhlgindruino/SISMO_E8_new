@@ -1,0 +1,10 @@
+﻿Page:,0x0000,,0x0000,,0x0000,,0x0000,0737_P1.jpg;RGBColor(0,0,0);A Cuisses Fessiers Niveau;Disable;0;0;Disable;
+button_0:0,1,133,79,0x0020,,,Page0007,button_0,Disable,Disable,0x0000,
+button_1:186,1,219,78,0x0020,,,Page0001,button_1,Disable,Disable,0x0000,
+button_2:29,161,150,610,0x0020,0748_P3_1.jpg,,Page0057,button_2,Disable,Disable,0x0000,
+button_3:221,161,150,610,0x0020,0749_P3_2.jpg,,Page0058,button_3,Disable,Disable,0x0000,
+button_4:421,161,150,610,0x0020,0750_P3_3.jpg,,Page0059,button_4,Disable,Disable,0x0000,
+icon_0:0xFFFF,2,0x001E,2,159,916,280,40,0360_name1_61.jpg,0365_name6_61.jpg,,,0,0,icon_0,Disable;
+icon_1:0xFFFF,2,0x001E,2,44,214,120,40,0456_name1_77.jpg,0461_name6_77.jpg,,1,1,6,icon_1,Enable;
+icon_2:0xFFFF,2,0x001E,2,234,214,120,40,0462_name1_78.jpg,0467_name6_78.jpg,,1,1,6,icon_2,Enable;
+icon_3:0xFFFF,2,0x001E,2,439,214,120,40,0468_name1_79.jpg,0473_name6_79.jpg,,1,1,6,icon_3,Enable;

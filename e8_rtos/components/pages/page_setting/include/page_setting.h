@@ -1,5 +1,5 @@
 /*
- * page_setting.h - Chữ Sismo (mọi trang), trang mật khẩu 0026, cài đặt WiFi 0027, MODE 0028, khởi động 0000
+ * page_setting.h - Chữ Sismo (mọi trang), mật khẩu 0026, các trang cài đặt 0027..0030, khởi động 0000
  *
  * Task "setting" (ưu tiên 3):
  *   - Chạm "Sismo" ở trang bất kỳ        -> về trang chính ngay
@@ -10,7 +10,12 @@
  *       Submit trên web (đúng / sai)     -> lưu wifi.json, tắt AP, màn hình về trang 0, khởi động lại
  *       rời trang khi đang cấu hình      -> tắt AP
  *   - Nhập 74710                         -> trang MODE (0028): bấm đổi MODE WIFI / MODE LOCAL (lưu flash)
- *   - Đủ 5 số mà sai -> đứng yên; bấm số thứ 6 -> xóa hết. Phím C -> xóa hết.
+ *   - Nhập 74766                         -> trang thẻ (0029): Accès libre-service (chế độ test, luôn
+ *                                           connecté) / Accès badgeuse (connecté = đang có thẻ)
+ *   - Nhập 200816                        -> trang 0030: Mode 1..5, Card / Sismo Timer, Motor ratio 2..17,
+ *                                           MANUAL 5' / 90' (không đổi được khi động cơ đang chạy)
+ *   - Mật khẩu 5 hoặc 6 số. Đủ 5 số mà sai (và không phải đầu của mật khẩu 6 số nào) -> đứng yên,
+ *     bấm số tiếp theo -> xóa hết; đủ 6 số mà sai -> bấm số tiếp theo -> xóa hết. Phím C -> xóa hết.
  *   - Trang 0 (khởi động) hiện 3 s       -> tự sang trang chính
  */
 #pragma once

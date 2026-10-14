@@ -41,6 +41,8 @@ void hmi_page_name(int page, char *out, size_t n)
     case 26: s = "Mật khẩu cài đặt"; break;
     case 27: s = "Cài đặt WiFi (74700)"; break;
     case 28: s = "Chế độ điều khiển (74710)"; break;
+    case 29: s = "Thẻ / ngôn ngữ (74766)"; break;
+    case 30: s = "Mode / Timer / Ratio / Manual (200816)"; break;
     default: snprintf(out, n, "Trang %d", page); return;
     }
     snprintf(out, n, "%s", s);

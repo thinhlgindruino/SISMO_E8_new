@@ -8,7 +8,7 @@ set(EXTRA_COMPONENT_DIRS
     ${CMAKE_CURRENT_LIST_DIR}/components/pages/page_session
     ${CMAKE_CURRENT_LIST_DIR}/components/pages/page_setting)
 
-set(PROJECT_VER "1.2.0")
+set(PROJECT_VER "1.3.2")
 
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 project(e8_rtos)

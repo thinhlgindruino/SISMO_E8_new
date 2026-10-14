@@ -3,12 +3,12 @@
  *
  * Cấu trúc (mỗi thư mục trong components/ là 1 module):
  *   app_config          cấu hình chung: bảng task, watchdog, gỡ lỗi
- *   device_settings     gắn SPIFFS, cài đặt lưu flash (/spiffs/settings.json): MODE WIFI / LOCAL
+ *   device_settings     gắn SPIFFS, cài đặt lưu flash (/spiffs/settings.json)
  *   hmi                 UART màn hình + hmi_map (số trang, địa chỉ UI)       task hmi_rx (5), hmi_poll (4)
  *   motor_modbus        Modbus RTU với mạch CM8                               task motor (5)
  *   ui_router           chia sự kiện màn hình cho từng trang
  *   pages/page_session  trang buổi tập: điều khiển động cơ, cường độ, Xung    task session (6)
- *   pages/page_setting  Sismo, mật khẩu, trang 74700 (WiFi), 74710 (MODE)     task setting (3)
+ *   pages/page_setting  Sismo, mật khẩu, trang 74700 / 74710 / 74766 / 200816  task setting (3)
  *   network             WiFi STA/AP, web 192.168.10.100, wifi.json             (core 0)
  *   ota                 cập nhật firmware qua web (tab Upload) + tự quay về bản cũ khi bản mới lỗi
  *   logger              in log ra Monitor                                      task logger (2)

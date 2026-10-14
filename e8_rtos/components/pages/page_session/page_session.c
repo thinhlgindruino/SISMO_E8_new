@@ -6,8 +6,20 @@
  * lại vì lỗi (watchdog / crash) hoặc mất liên lạc màn hình giữa buổi tập -> bắt màn hình tạm dừng,
  * người dùng phải bấm ▶ lại.
  *
- * Cho chạy khi: còn liên lạc màn hình, đang ở trang buổi tập, 0x1001 = 1, không bị bắt dừng, và
- * (MODE LOCAL hoặc ONLINE). MODE WIFI mà chưa có mạng -> ghi 0x1001 = 0 (tạm dừng).
+ * Cho chạy khi: còn liên lạc màn hình, đang ở trang buổi tập, 0x1001 = 1, không bị bắt dừng,
+ * (MODE LOCAL hoặc ONLINE), và (Accès libre-service hoặc có thẻ). Không đủ -> ghi 0x1001 = 0 (tạm dừng).
+ *
+ * Thẻ (Accès badgeuse, trang 74766): từ CM8 ra 2 dây thẻ (chân IN1 / A3 và GND); 2 dây chập nhau
+ * = có thẻ, CM8 ghi thanh ghi 18 = 1;
+ * task motor đọc thanh ghi này khoảng mỗi 100 ms. Không có thẻ -> không cho bắt đầu. Mất thẻ giữa buổi tập:
+ *   Timer badgeuse -> dừng ngay + báo lỗi;
+ *   Timer sismo    -> chạy tiếp hết chu trình; tạm dừng / hết giờ thì không cho bắt đầu lại khi chưa có thẻ.
+ * Mất kết nối CM8 thì coi như không có thẻ.
+ *
+ * Mode / ratio gửi CM8 (thanh ghi 8 / 9) lấy từ cài đặt trang 200816. Vào trang MANUAL (0010) khi
+ * chưa chạy -> ghi thời gian buổi tập 5 / 90 phút (cài đặt 200816) vào 0x1003.
+ * Hiện thời gian dạng MM:SS tới 99:59: widget Timer (đếm 0x1003) để ẩn, ESP32 ghi phút * 100 + giây
+ * vào 0x1048 cho 1 Graphics Number Display (dấu thập phân là icon dấu ":") mỗi khi 0x1003 đổi.
  *
  * Cường độ / Xung: bình thường nút +/- và đồng hồ cùng dùng 0x1000, màn hình tự vẽ (nhấn giữ mượt),
  * ESP32 chỉ ĐỌC. Đang tập + bật Xung: ESP32 ghi mức dao động tam giác ±PULSE_AMPLITUDE (mỗi
@@ -15,7 +27,7 @@
  * tắt Xung thì ghi trả cường độ gốc và chờ màn hình nhận (SCREEN_SYNC_MS).
  * Cường độ 1..32 -> tốc độ CM8 0..32 làm tròn xuống số CHẴN (CM8 chỉ đứng yên đúng ở số chẵn).
  *
- * Thông số: RUN_MODE 3 / RUN_RATIO 9 (tạm, chưa có giá trị chính thức), giới hạn dòng 3,70 A,
+ * Thông số: giới hạn dòng 3,70 A,
  * PREPARE_TIMEOUT_MS chờ CM8 về 0 trước lần chạy đầu, PAUSE_SCREEN_ON_ERROR: CM8 lỗi / mất kết nối
  * khi đang tập -> tạm dừng màn hình.
  */
@@ -34,8 +46,6 @@
 #include "network.h"
 #include "page_session.h"
 
-#define RUN_MODE                  3
-#define RUN_RATIO                 9
 #define CURRENT_LIMIT_X100        370
 #define SPEED_MAX                 32
 #define SPEED_EVEN_ONLY           1
@@ -45,6 +55,7 @@
 #define PULSE_STEP_MS             300
 #define SCREEN_SYNC_MS            600
 #define SESSION_PERIOD_MS         50
+#define TIME_SETTLE_MS            300
 
 static QueueHandle_t touch_queue;
 
@@ -58,6 +69,16 @@ static session_motor_t mode = SESSION_FAN_ONLY;
 static int64_t mode_changed_ms = 0;
 
 static int64_t ms_now(void) { return esp_timer_get_time() / 1000; }
+
+static int64_t last_time_write_ms = 0;
+
+static void show_time(int seconds)
+{
+    if (seconds < 0) seconds = 0;
+    int minutes = seconds / 60;
+    if (minutes > 99) minutes = 99;
+    hmi_write(ADDR_TIME_DISPLAY, (uint16_t)(minutes * 100 + seconds % 60));
+}
 
 session_status_t page_session_get_status(void)
 {
@@ -192,7 +213,47 @@ static void task_session(void *arg)
                      net_state_name(net_get_state()));
         }
 
-        bool run_allowed = link_ok && !pause_required && on_session && net_ok && d.vars[VAR_RUN] == 1;
+        bool card_required = device_get_access_mode() == ACCESS_CARD;
+        bool card_present  = t.connected && t.card == 1;
+        static bool card_grace = false;
+        static int64_t last_card_block_ms = 0;
+        if (!card_required || card_present) card_grace = false;
+        if (card_required && running_prev && !card_present && !card_grace) {
+            if (device_get_card_timer() == CARD_TIMER_SISMO) {
+                card_grace = true;
+                log_send("   [THE] Mat the giua buoi tap (Timer Sismo) -> chay het chu trinh, khong cho bat dau chu trinh moi");
+            } else {
+                log_send("   [THE] LOI: mat the giua buoi tap (Timer badgeuse) -> DUNG dong co");
+            }
+        }
+        bool card_ok = !card_required || card_present || (card_grace && running_prev);
+        if (link_ok && on_session && d.vars[VAR_RUN] == 1 && !card_ok && ms_now() - last_card_block_ms >= 500) {
+            last_card_block_ms = ms_now();
+            hmi_write(ADDR_RUN, 0);
+            if (!running_prev) log_send("   [THE] Acces badgeuse: chua co the (o 18 = %u) -> khong cho bat dau", t.card);
+        }
+
+        static int prev_page = -1;
+        static int shown_seconds = -1;
+        if (d.page == PAGE_MANUEL && prev_page != PAGE_MANUEL && d.vars[VAR_RUN] == 0) {
+            int minutes = device_get_manual_minutes();
+            hmi_write(ADDR_SECONDS, (uint16_t)(minutes * 60));
+            show_time(minutes * 60);
+            shown_seconds = minutes * 60;
+            last_time_write_ms = ms_now();
+            log_send("   [MANUAL] Thoi gian buoi tap %d phut", minutes);
+        } else if (link_ok && on_session) {
+            int s = d.vars[VAR_SECONDS];
+            if ((s != shown_seconds && ms_now() - last_time_write_ms >= TIME_SETTLE_MS) || d.page != prev_page) {
+                show_time(s);
+                shown_seconds = s;
+            }
+        } else {
+            shown_seconds = -1;
+        }
+        prev_page = d.page;
+
+        bool run_allowed = link_ok && !pause_required && on_session && net_ok && card_ok && d.vars[VAR_RUN] == 1;
 
         update_intensity(&d);
         bool want_pulse = run_allowed && d.vars[VAR_PULSE] == 1;
@@ -212,6 +273,8 @@ static void task_session(void *arg)
         }
         running_prev = run_allowed;
         bool cm8_ok = t.connected && t.error == 0;
+        uint16_t run_mode  = (uint16_t)device_get_motor_mode();
+        uint16_t run_ratio = (uint16_t)device_get_motor_ratio();
 
         switch (mode) {
         case SESSION_FAN_ONLY:
@@ -219,7 +282,7 @@ static void task_session(void *arg)
             break;
         case SESSION_PREPARE:
             if (!run_allowed) change_mode(SESSION_STOP);
-            else if ((t.cmd == MOTOR_CMD_STOP && t.mode == RUN_MODE && t.run_state == 0) ||
+            else if ((t.cmd == MOTOR_CMD_STOP && t.mode == run_mode && t.run_state == 0) ||
                      ms_now() - mode_changed_ms > PREPARE_TIMEOUT_MS)
                 change_mode(SESSION_RUN);
             break;
@@ -238,11 +301,11 @@ static void task_session(void *arg)
             break;
         case SESSION_PREPARE:
         case SESSION_STOP:
-            motor_set(MOTOR_CMD_STOP, 0, CURRENT_LIMIT_X100, RUN_MODE, RUN_RATIO);
+            motor_set(MOTOR_CMD_STOP, 0, CURRENT_LIMIT_X100, run_mode, run_ratio);
             break;
         case SESSION_RUN:
             speed = level_to_speed(target_level);
-            motor_set(MOTOR_CMD_RUN, speed, CURRENT_LIMIT_X100, RUN_MODE, RUN_RATIO);
+            motor_set(MOTOR_CMD_RUN, speed, CURRENT_LIMIT_X100, run_mode, run_ratio);
             break;
         }
 

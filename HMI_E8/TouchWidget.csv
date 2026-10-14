@@ -167,3 +167,12 @@ PageID,WidgetName,Name    ,WriteAddr,Length,
 28,varAdj_0,varAdj_0,0x1012,2, , ,0x01
 28,button_0,button_6, , ,0x0020,Page0001
 28,varAdj_1,varAdj_1,0x1014,2, , ,0x01
+29,button_0,button_6, , ,0x0020,Page0001
+29,varAdj_0,varAdj_0,0x1012,2, , ,0x01
+29,varAdj_1,varAdj_1,0x1019,2, , ,0x01
+30,button_0,button_6, , ,0x0020,Page0001
+30,varAdj_0,varAdj_0,0x1012,2, , ,0x01
+30,varAdj_1,varAdj_1,0x1015,2, , ,0x01
+30,varAdj_2,varAdj_1,0x1016,2, , ,0x01
+30,varAdj_3,varAdj_1,0x1017,2, , ,0x01
+30,varAdj_4,varAdj_1,0x1018,2, , ,0x01

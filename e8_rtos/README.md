@@ -12,7 +12,7 @@ e8_rtos/
 ├── main/main.c               khởi động: watchdog + gọi *_start() của từng module
 └── components/
     ├── app_config/           bảng task (ưu tiên / stack / core), watchdog, cờ gỡ lỗi
-    ├── device_settings/      cài đặt lưu flash /spiffs/settings.json (MODE WIFI / LOCAL ...), gắn SPIFFS
+    ├── device_settings/      cài đặt lưu flash /spiffs/settings.json (MODE, thẻ, timer, mode/ratio, manual), gắn SPIFFS
     ├── logger/               task logger: log_send() + hook in báo cáo định kỳ
     ├── hmi/                  UART màn hình (task hmi_rx, hmi_poll)
     │   └── include/hmi_map.h số trang, địa chỉ biến của UI — sửa UI thì sửa file này
@@ -50,6 +50,15 @@ Mỗi page nhận sự kiện thì đưa vào hàng đợi của mình rồi tr�
 |---|---|---|
 | 74700 | 0027 | WiFi: OFFLINE / ONLINE → Configuration WIFI (AP + web) |
 | 74710 | 0028 | MODE WIFI (phải ONLINE mới cho động cơ chạy) / MODE LOCAL (không cần mạng) |
+| 74766 | 0029 | Accès libre-service (không quan tâm thẻ) / Accès badgeuse (phải có thẻ), trạng thái CM8; ngôn ngữ (sau) |
+| 200816 | 0030 | Mode 1..5 (thanh ghi 8 CM8), Card / Sismo Timer, Motor ratio 2..17 (thanh ghi 9), MANUAL 5' / 90' |
+
+Mode + ratio: CM8 dịch dải tốc độ 42..79 theo mode (12 / 15 / 20 mỗi bậc) và ratio (3 mỗi bậc, gốc 9); cặp làm dải ra ngoài 0..180
+(chỉ có Mode 1 + Ratio 2) bị bỏ qua khi bấm. Trang MANUAL: Timer để ẩn, ESP32 ghi phút × 100 + giây vào 0x1048 để hiện tới 90:00.
+
+Mật khẩu 5 hoặc 6 số. Đủ 5 số mà sai và không phải đầu của mật khẩu 6 số nào -> bấm số tiếp theo thì xóa hết.
+Thẻ: CM8 đọc chân IN1 -> thanh ghi 18 (1 = có thẻ). Badgeuse + Timer badgeuse: mất thẻ -> dừng + báo lỗi;
+Timer sismo: mất thẻ -> chạy hết chu trình, không cho bắt đầu chu trình mới.
 
 Thêm mật khẩu mới: thêm 1 dòng vào `PASSWORD_TABLE` trong `page_setting.c`.
 

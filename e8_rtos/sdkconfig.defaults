@@ -14,3 +14,5 @@ CONFIG_HTTPD_MAX_REQ_HDR_LEN=1024
 CONFIG_HTTPD_MAX_URI_LEN=512
 # Ngan xep mang (lwIP) chay o core 0, nhuong core 1 cho cac task dieu khien
 CONFIG_LWIP_TCPIP_TASK_AFFINITY_CPU0=y
+# OTA: firmware moi chua duoc xac nhan ma bi reset (crash, watchdog, mat dien) -> bootloader quay ve ban cu
+CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y

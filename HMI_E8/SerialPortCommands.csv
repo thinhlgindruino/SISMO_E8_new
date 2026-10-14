@@ -3,10 +3,10 @@ Page,WidgetName,Name    ,Header,Length,Cmd,Addr,Data,CRC
 -,SystemFunction,Brightness CTRL,5AA5,07,10,7001,003F,EED3
 -,SystemFunction,Year,5AA5,07,10,7002,001A,DF08
 -,SystemFunction,Month,5AA5,07,10,7003,000A,8F04
--,SystemFunction,Day,5AA5,07,10,7004,0009,7EC4
--,SystemFunction,Hour,5AA5,07,10,7005,000D,2EC7
--,SystemFunction,Minute,5AA5,07,10,7006,0009,DF04
--,SystemFunction,Second,5AA5,07,10,7007,002E,CEDE
+-,SystemFunction,Day,5AA5,07,10,7004,000E,3F06
+-,SystemFunction,Hour,5AA5,07,10,7005,0008,EEC4
+-,SystemFunction,Minute,5AA5,07,10,7006,0034,1ED5
+-,SystemFunction,Second,5AA5,07,10,7007,002B,0EDD
 -,SystemFunction,Refresh time,5AA5,07,10,7008,0000,7EC1
 -,SystemFunction,Play music,5AA5,07,10,700A,0000,DF01
 -,SystemFunction,Volume CTRL,5AA5,07,10,700B,0010,8F0D

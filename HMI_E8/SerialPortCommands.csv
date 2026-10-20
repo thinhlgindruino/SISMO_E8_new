@@ -4,9 +4,9 @@ Page,WidgetName,Name    ,Header,Length,Cmd,Addr,Data,CRC
 -,SystemFunction,Year,5AA5,07,10,7002,001A,DF08
 -,SystemFunction,Month,5AA5,07,10,7003,000A,8F04
 -,SystemFunction,Day,5AA5,07,10,7004,0014,BECD
--,SystemFunction,Hour,5AA5,07,10,7005,0009,2F04
+-,SystemFunction,Hour,5AA5,07,10,7005,000A,6F05
 -,SystemFunction,Minute,5AA5,07,10,7006,002F,5EDE
--,SystemFunction,Second,5AA5,07,10,7007,003B,0F11
+-,SystemFunction,Second,5AA5,07,10,7007,000B,0F05
 -,SystemFunction,Refresh time,5AA5,07,10,7008,0000,7EC1
 -,SystemFunction,Play music,5AA5,07,10,700A,0000,DF01
 -,SystemFunction,Volume CTRL,5AA5,07,10,700B,0010,8F0D
@@ -34,12 +34,6 @@ Page6,icon_10,icon_10,5AA5,07,10,105D,0000,70D1
 Page6,icon_12,icon_12,5AA5,07,10,105D,0000,70D1
 Page6,icon_13,icon_13,5AA5,07,10,105D,0000,70D1
 Page6,progress_0,progress_0,5AA5,07,10,105A,0000,C110
-Page8,uitimer_0,preset_Addr,5AA5,07,10,1002,0078,40E1
-Page8,uitimer_0,calc_Addr,5AA5,07,10,1003,012C,114E
-Page8,uitimer_0,ctrl_Addr,5AA5,07,10,1001,0000,B0C3
-Page8,icon_0,icon_0,5AA5,07,10,1006,0000,0102
-Page8,icon_1,icon_1,5AA5,07,10,1005,0000,F102
-Page8,icon_2,icon_2,5AA5,07,10,1001,0000,B0C3
 Page10,icon_0,icon_0,5AA5,07,10,1000,0000,E103
 Page10,icon_1,icon_1,5AA5,07,10,1001,0000,B0C3
 Page10,uitimer_0,preset_Addr,5AA5,07,10,1002,012C,408E

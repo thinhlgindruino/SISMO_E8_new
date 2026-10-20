@@ -401,18 +401,6 @@ static void task_session(void *arg)
     }
 }
 
-static const char *PROGRAM_TITLES[22] = {
-    "Tonification - Bras", "Tonification - Poitrine Bras", "Tonification - Sangle abdominale",
-    "Tonification - Cuisses Fessiers", "Tonification - Complet",
-    "Remodelage - Poitrine Bras", "Remodelage - Sangle abdominale", "Remodelage - Cuisses Fessiers 1",
-    "Remodelage - Cuisses Fessiers 2", "Remodelage - Complet",
-    "Anti-cellulite - Cuisses Fessiers", "Gainage - Complet 1", "Gainage - Complet 2",
-    "Relaxation Drainage - Drainage", "Relaxation Drainage - Relax 1", "Relaxation Drainage - Relax 2",
-    "Proprioception - 1", "Proprioception - 2", "Proprioception - 3",
-    "Proprioception - 4", "Proprioception - 5", "Proprioception - 6"
-};
-static const char *LEVEL_NAMES[4] = {"Débutant", "Initié", "Confirmé", ""};
-
 static void mmss(uint16_t seconds, char *out, size_t n)
 {
     snprintf(out, n, "%02u:%02u", seconds / 60, seconds % 60);
@@ -421,14 +409,6 @@ static void mmss(uint16_t seconds, char *out, size_t n)
 static void program_name(const hmi_data_t *d, char *out, size_t n)
 {
     switch (d->page) {
-    case 6: {
-        uint16_t id = d->vars[VAR_PROGRAM], lvl = d->vars[VAR_LEVEL];
-        const char *g = (id < 22) ? PROGRAM_TITLES[id] : "Programmes";
-        if (lvl < 3) snprintf(out, n, "%s - %s", g, LEVEL_NAMES[lvl]);
-        else         snprintf(out, n, "%s", g);
-        return;
-    }
-    case 8:  snprintf(out, n, "Perso - %u", d->vars[VAR_PERSO]); return;
     case 10: snprintf(out, n, "Manuel"); return;
     case 11: snprintf(out, n, "Durée Exercices"); return;
     default: out[0] = '\0';

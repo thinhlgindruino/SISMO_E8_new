@@ -3,8 +3,9 @@
  * (xem page_program.h; số liệu 22 bài trong program_data.c)
  *
  * Số bài 0x1007: 0..4 Tonification, 5..9 Remodelage, 10 Anti-cellulite, 11..12 Gainage,
- * 13..15 Relaxation, 16..21 Proprioception. Tên bài = icon 0540 + (bài * 3 + mức) cho 16 bài đầu,
- * 0540 + 48 + (bài - 16) cho Proprioception (ghi 0x1051 = số thứ tự 1..54).
+ * 13..15 Relaxation, 16..21 Proprioception, 22..27 Perso 1..6 (trang 0007 ghi 0x1007 rồi tự sang 0014).
+ * Tên bài = icon 0540 + (bài * 3 + mức) cho 16 bài đầu, 0540 + 48 + (bài - 16) cho Proprioception /
+ * Perso (ghi 0x1051 = số thứ tự 1..60). Proprioception / Perso chỉ có 1 mức, nút < về 0025 / 0007.
  *
  * Vào trang buổi tập: ghi hình bài tập con đầu, tên bài, trục, cường độ cột đầu, thời gian; sau
  * PARAM_DELAY_MS đọc 10 word parameterAddr của Progress Bar (0x2020 / 0x2030; đọc lại tối đa 4 lần, hỏng
@@ -43,6 +44,7 @@
 #include "program_data.h"
 
 #define FIRST_PROPRIO             16
+#define FIRST_PERSO               22
 #define AXIS_SHORT_MAX_S          120
 #define LOOP_MS                   50
 #define PARAM_WORDS               10
@@ -460,7 +462,7 @@ static void on_button(int value, int page)
             reset_run();
             log_send("   [PROGRAMME] Bam < khi dang chay -> dung bai");
         }
-        hmi_goto_page(program >= FIRST_PROPRIO ? PAGE_PROPRIO : PAGE_LEVEL);
+        hmi_goto_page(program >= FIRST_PERSO ? PAGE_PERSO : program >= FIRST_PROPRIO ? PAGE_PROPRIO : PAGE_LEVEL);
         break;
     default:
         break;

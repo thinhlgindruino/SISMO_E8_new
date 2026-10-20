@@ -1,9 +1,9 @@
 /*
- * program_data.c - Số liệu 54 bài Programmes (SINH TỰ ĐỘNG bởi tools/programmes.py, không sửa tay)
+ * program_data.c - Số liệu 54 bài Programmes + 6 bài Perso (SINH TỰ ĐỘNG bởi tools/programmes.py, không sửa tay)
  *
  * Mỗi bài: tên, có nút X, lưới bài tập con, thời lượng / mức độ, biểu đồ / mức độ (đoạn cột:
  * số cột, mức cao, mức thấp; mức thấp 0 = cùng mức), danh sách bài tập con (giây, hình 1..32).
- * Số thứ tự biểu đồ (0..53) = icon 0800 + n (xám), 0860 + n (xanh).
+ * Số thứ tự biểu đồ (0..59) = icon 0800 + n (xám), 0860 + n (xanh).
  */
 #include "program_data.h"
 
@@ -61,6 +61,12 @@ static const program_seg_t SEG_50[] = { { 2, 9, 0 }, { 2, 19, 0 }, { 2, 28, 0 },
 static const program_seg_t SEG_51[] = { { 4, 18, 0 }, { 4, 22, 0 }, { 4, 18, 0 }, { 4, 22, 0 }, { 4, 18, 0 }, { 4, 22, 0 }, { 4, 18, 0 }, { 4, 22, 0 }, { 4, 18, 0 }, { 4, 22, 0 }, { 20, 18, 0 } };
 static const program_seg_t SEG_52[] = { { 12, 21, 0 }, { 12, 25, 0 }, { 12, 21, 0 }, { 12, 25, 0 }, { 12, 21, 0 }, { 12, 25, 0 }, { 12, 21, 0 }, { 12, 25, 0 }, { 12, 21, 0 }, { 12, 25, 0 } };
 static const program_seg_t SEG_53[] = { { 6, 23, 0 }, { 6, 17, 0 }, { 6, 23, 0 }, { 6, 17, 0 }, { 6, 23, 0 }, { 60, 17, 0 }, { 18, 14, 0 }, { 12, 27, 0 } };
+static const program_seg_t SEG_54[] = { { 60, 10, 0 } };
+static const program_seg_t SEG_55[] = { { 60, 10, 0 }, { 60, 8, 0 } };
+static const program_seg_t SEG_56[] = { { 12, 10, 0 }, { 12, 8, 0 }, { 12, 6, 0 } };
+static const program_seg_t SEG_57[] = { { 60, 16, 0 } };
+static const program_seg_t SEG_58[] = { { 60, 16, 0 }, { 60, 14, 0 } };
+static const program_seg_t SEG_59[] = { { 12, 16, 0 }, { 12, 14, 0 }, { 12, 12, 0 } };
 
 static const program_sub_t SUB_00[] = { { 40, 24 }, { 20, 23 }, { 40, 24 }, { 20, 23 }, { 60, 24 }, { 20, 23 }, { 80, 24 }, { 20, 23 } };
 static const program_sub_t SUB_01[] = { { 60, 5 }, { 60, 7 }, { 60, 3 }, { 60, 5 }, { 60, 7 } };
@@ -84,6 +90,12 @@ static const program_sub_t SUB_18[] = { { 0, 32 } };
 static const program_sub_t SUB_19[] = { { 0, 32 } };
 static const program_sub_t SUB_20[] = { { 0, 32 } };
 static const program_sub_t SUB_21[] = { { 0, 32 } };
+static const program_sub_t SUB_22[] = { { 0, 32 } };
+static const program_sub_t SUB_23[] = { { 0, 32 } };
+static const program_sub_t SUB_24[] = { { 0, 32 } };
+static const program_sub_t SUB_25[] = { { 0, 32 } };
+static const program_sub_t SUB_26[] = { { 0, 32 } };
+static const program_sub_t SUB_27[] = { { 0, 32 } };
 
 const program_info_t PROGRAM_INFO[PROGRAM_COUNT] = {
     { "Tonification - Bras", true, 2, 0, { 300, 300, 300 }, { { SEG_00, 1, 0 }, { SEG_01, 1, 1 }, { SEG_02, 1, 2 } }, SUB_00, 8 },
@@ -108,4 +120,10 @@ const program_info_t PROGRAM_INFO[PROGRAM_COUNT] = {
     { "Proprioception - 4", false, 0, 0, { 300, 300, 300 }, { { SEG_51, 11, 51 }, { SEG_51, 11, 51 }, { SEG_51, 11, 51 } }, SUB_19, 1 },
     { "Proprioception - 5", false, 0, 0, { 600, 600, 600 }, { { SEG_52, 10, 52 }, { SEG_52, 10, 52 }, { SEG_52, 10, 52 } }, SUB_20, 1 },
     { "Proprioception - 6", false, 0, 0, { 600, 600, 600 }, { { SEG_53, 8, 53 }, { SEG_53, 8, 53 }, { SEG_53, 8, 53 } }, SUB_21, 1 },
+    { "Perso - 1", false, 0, 0, { 60, 60, 60 }, { { SEG_54, 1, 54 }, { SEG_54, 1, 54 }, { SEG_54, 1, 54 } }, SUB_22, 1 },
+    { "Perso - 2", false, 0, 0, { 120, 120, 120 }, { { SEG_55, 2, 55 }, { SEG_55, 2, 55 }, { SEG_55, 2, 55 } }, SUB_23, 1 },
+    { "Perso - 3", false, 0, 0, { 180, 180, 180 }, { { SEG_56, 3, 56 }, { SEG_56, 3, 56 }, { SEG_56, 3, 56 } }, SUB_24, 1 },
+    { "Perso - 4", false, 0, 0, { 60, 60, 60 }, { { SEG_57, 1, 57 }, { SEG_57, 1, 57 }, { SEG_57, 1, 57 } }, SUB_25, 1 },
+    { "Perso - 5", false, 0, 0, { 120, 120, 120 }, { { SEG_58, 2, 58 }, { SEG_58, 2, 58 }, { SEG_58, 2, 58 } }, SUB_26, 1 },
+    { "Perso - 6", false, 0, 0, { 180, 180, 180 }, { { SEG_59, 3, 59 }, { SEG_59, 3, 59 }, { SEG_59, 3, 59 } }, SUB_27, 1 },
 };

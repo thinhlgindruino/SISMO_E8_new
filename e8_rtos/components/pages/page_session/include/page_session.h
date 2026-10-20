@@ -1,5 +1,5 @@
 /*
- * page_session.h - Các trang buổi tập (Programmes 6, Perso 8, Manuel 10, Durée 11)
+ * page_session.h - Các trang buổi tập Manuel 10, Durée 11 + động cơ cho Programmes / Perso (6, 14)
  *
  * Task "session" (ưu tiên cao nhất, chu kỳ 50 ms):
  *   lấy bản sao dữ liệu màn hình + trạng thái CM8 -> quyết định lệnh gửi CM8,

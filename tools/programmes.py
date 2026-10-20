@@ -1,9 +1,9 @@
 """
-programmes.py - Số liệu 54 bài Programmes của E8 (đọc từ ảnh chụp máy E8 cũ) + bộ sinh file
+programmes.py - Số liệu 54 bài Programmes + 6 bài Perso của E8 (đọc từ ảnh chụp máy E8 cũ) + bộ sinh file
 
 Sửa số liệu ở PROGRAMS bên dưới rồi chạy:
     python programmes.py <thư mục HMI_E8> <thư mục e8_rtos>
--> sinh lại ảnh biểu đồ (Icon 0800..0853 xám, 0860..0913 xanh, 0920..0951 cột đều cho Xung) và file
+-> sinh lại ảnh biểu đồ (Icon 0800..0859 xám, 0860..0919 xanh, 0920..0951 cột đều cho Xung) và file
    components/pages/page_program/program_data.c, đồng thời in bảng kiểm tra.
 
 Quy ước:
@@ -88,6 +88,12 @@ PROGRAMS = [
     dict(name="Proprioception - 5", x=False, grid=(0, 0), secs=(600,), sub=[(0, 32)], prof=[rep(5, (12, 21, 0), (12, 25, 0))]),
     dict(name="Proprioception - 6", x=False, grid=(0, 0), secs=(600,), sub=[(0, 32)],
          prof=[[(6, 23, 0), (6, 17, 0), (6, 23, 0), (6, 17, 0), (6, 23, 0), (60, 17, 0), (18, 14, 0), (12, 27, 0)]]),
+    dict(name="Perso - 1", x=False, grid=(0, 0), secs=(60,), sub=[(0, 32)], prof=[[(60, 10, 0)]]),
+    dict(name="Perso - 2", x=False, grid=(0, 0), secs=(120,), sub=[(0, 32)], prof=[[(60, 10, 0), (60, 8, 0)]]),
+    dict(name="Perso - 3", x=False, grid=(0, 0), secs=(180,), sub=[(0, 32)], prof=[[(12, 10, 0), (12, 8, 0), (12, 6, 0)]]),
+    dict(name="Perso - 4", x=False, grid=(0, 0), secs=(60,), sub=[(0, 32)], prof=[[(60, 16, 0)]]),
+    dict(name="Perso - 5", x=False, grid=(0, 0), secs=(120,), sub=[(0, 32)], prof=[[(60, 16, 0), (60, 14, 0)]]),
+    dict(name="Perso - 6", x=False, grid=(0, 0), secs=(180,), sub=[(0, 32)], prof=[[(12, 16, 0), (12, 14, 0), (12, 12, 0)]]),
 ]
 
 LEVELS = ("Débutant", "Initié", "Confirmé")
@@ -157,11 +163,11 @@ def write_c(rtos):
     path = os.path.join(rtos, "components", "pages", "page_program", "program_data.c")
     L = []
     L.append("/*")
-    L.append(" * program_data.c - Số liệu 54 bài Programmes (SINH TỰ ĐỘNG bởi tools/programmes.py, không sửa tay)")
+    L.append(" * program_data.c - Số liệu 54 bài Programmes + 6 bài Perso (SINH TỰ ĐỘNG bởi tools/programmes.py, không sửa tay)")
     L.append(" *")
     L.append(" * Mỗi bài: tên, có nút X, lưới bài tập con, thời lượng / mức độ, biểu đồ / mức độ (đoạn cột:")
     L.append(" * số cột, mức cao, mức thấp; mức thấp 0 = cùng mức), danh sách bài tập con (giây, hình 1..32).")
-    L.append(" * Số thứ tự biểu đồ (0..53) = icon 0800 + n (xám), 0860 + n (xanh).")
+    L.append(" * Số thứ tự biểu đồ (0..59) = icon 0800 + n (xám), 0860 + n (xanh).")
     L.append(" */")
     L.append('#include "program_data.h"')
     L.append("")

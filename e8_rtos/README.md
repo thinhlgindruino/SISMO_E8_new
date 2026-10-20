@@ -19,9 +19,9 @@ e8_rtos/
     ├── motor_modbus/         Modbus RTU với CM8 (task motor)
     ├── ui_router/            chia sự kiện màn hình cho từng trang
     ├── pages/
-    │   ├── page_session/     trang buổi tập 8/10/11 + động cơ cho Programmes 6/14: cường độ, Xung, an toàn (task session)
+    │   ├── page_session/     trang buổi tập 10/11 + động cơ cho Programmes / Perso 6/14: cường độ, Xung, an toàn (task session)
     │   ├── page_setting/     Sismo, mật khẩu, 74700 / 74710 / 74766 / 200816, trang khởi động (task setting)
-    │   └── page_program/     Programmes: mức độ, trang 0006 / 0014 / 0013, chạy bài; program_data.c sinh bởi tools/programmes.py (task program)
+    │   └── page_program/     Programmes + Perso: mức độ, trang 0006 / 0014 / 0013, chạy bài; program_data.c sinh bởi tools/programmes.py (task program)
     ├── network/              WiFi STA + AP cấu hình, web 192.168.10.100, wifi.json
     └── ota/                  cập nhật firmware qua web + rollback
 ```

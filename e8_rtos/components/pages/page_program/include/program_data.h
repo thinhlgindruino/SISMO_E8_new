@@ -1,17 +1,17 @@
 /*
- * program_data.h - Kiểu dữ liệu 22 bài Programmes (số liệu ở program_data.c, sinh bởi tools/programmes.py)
+ * program_data.h - Kiểu dữ liệu 22 bài Programmes + 6 bài Perso (số liệu ở program_data.c, sinh bởi tools/programmes.py)
  *
  * program_seg_t: đoạn cột liên tiếp của biểu đồ (số cột, mức cao, mức thấp; thấp = 0 -> mọi cột mức cao,
  * khác 0 -> cột xen kẽ cao / thấp bắt đầu bằng cao). Mỗi cột = 5 s (trục 10 phút) hoặc 1 s (bài <= 2 phút).
  * program_sub_t: bài tập con (số giây, hình minh họa 1..32 = icon 0500..0531; giây 0 = cả bài một hình).
- * program_profile_t: biểu đồ của một mức độ, chart = số thứ tự ảnh 0..53 (icon 0800 + chart xám,
+ * program_profile_t: biểu đồ của một mức độ, chart = số thứ tự ảnh 0..59 (icon 0800 + chart xám,
  * 0860 + chart xanh).
  */
 #pragma once
 #include <stdbool.h>
 #include <stdint.h>
 
-#define PROGRAM_COUNT             22
+#define PROGRAM_COUNT             28
 #define PROGRAM_LEVELS            3
 #define PROGRAM_SLOTS             120
 #define ICON_PROFILE_GRAY_BASE    800

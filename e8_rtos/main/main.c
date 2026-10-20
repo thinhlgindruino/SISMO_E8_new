@@ -9,7 +9,7 @@
  *   ui_router           chia sự kiện màn hình cho từng trang
  *   pages/page_session  trang buổi tập: điều khiển động cơ, cường độ, Xung    task session (6)
  *   pages/page_setting  Sismo, mật khẩu, trang 74700 / 74710 / 74766 / 200816  task setting (3)
- *   pages/page_program  Programmes: mức độ, trang 0006 / 0014 / 0013, chạy bài   task program (3)
+ *   pages/page_program  Programmes + Perso: trang 0006 / 0014 / 0013, chạy bài     task program (3)
  *   network             WiFi STA/AP, web 192.168.10.100, wifi.json             (core 0)
  *   ota                 cập nhật firmware qua web (tab Upload) + tự quay về bản cũ khi bản mới lỗi
  *   logger              in log ra Monitor                                      task logger (2)

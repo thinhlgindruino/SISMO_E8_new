@@ -56,6 +56,7 @@
 #define PAGE_EXERCISES            13
 #define PAGE_PROGRAM              14
 #define PAGE_PROPRIO              25
+#define PAGE_PERSO                7
 
 #define ADDR_VAR_BASE             0x1000
 #define HMI_VAR_COUNT             10
@@ -63,7 +64,6 @@
 #define VAR_RUN                   1
 #define VAR_SECONDS               3
 #define VAR_PULSE                 5
-#define VAR_PERSO                 6
 #define VAR_PROGRAM               7
 #define VAR_LEVEL                 9
 #define ADDR_INTENSITY            (ADDR_VAR_BASE + VAR_INTENSITY)

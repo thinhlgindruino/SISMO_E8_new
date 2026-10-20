@@ -18,10 +18,6 @@ PageID,WidgetName,Name    ,WriteAddr,Length,ParameterAddr,Length
 6,icon_12,icon_12,0x105D,2,0xFFFF,14
 6,icon_13,icon_13,0x105D,2,0xFFFF,14
 6,progress_0,progress_0,0x105A,2,0x2020,19
-8,uitimer_0,uitimer_0,0x1003,2,0xFFFF,48,0x1002,2,0x1001,2
-8,icon_0,icon_0,0x1006,2,0xFFFF,14
-8,icon_1,icon_1,0x1005,2,0xFFFF,14
-8,icon_2,icon_2,0x1001,2,0xFFFF,14
 10,icon_0,icon_0,0x1000,2,0xFFFF,14
 10,icon_1,icon_1,0x1001,2,0xFFFF,14
 10,uitimer_0,uitimer_0,0x1003,2,0xFFFF,48,0x1002,2,0x1001,2

@@ -10,6 +10,10 @@
  *   0x1012          chữ "Sismo" trên mọi trang (giữ = giá trị tăng liên tục)
  *   0x1030          ngôn ngữ 0..5 (Français, English, Español, Italiano, Deutsch, Português): mọi icon
  *                   chữ cố định đọc biến này; nút ngôn ngữ trang 0029 tự tăng vòng và báo về ESP32
+ *   0x1031          thông báo (Icon 380x70 trang 0000 / 0006 / 0010 / 0011 / 0014): 0 ẩn, LANG_ICON(t, ngôn ngữ)
+ *                   với t = MSG_ERR01 (MODE WIFI chưa có mạng), MSG_ERR02 (CM8 mất kết nối / lỗi 2),
+ *                   MSG_ERR03 (quá dòng), MSG_ERR04 (quá áp), MSG_BADGE ("Veuillez badger svp")
+ *   0x1032          chạm màn hình trang khởi động 0000 (Variable Button toàn màn hình, giá trị 1, báo về ESP32)
  *   Icon chữ phụ thuộc trạng thái: giá trị = LANG_ICON(trạng thái, ngôn ngữ) = trạng thái * 6 + ngôn ngữ + 1
  *   0x1013 / 0x1040 nút / icon mạng trang 0027: 1 OFFLINE, 2 ONLINE, 3 + ngôn ngữ = Configuration WIFI
  *   0x1014 / 0x1041 nút / icon trang 0028: 0 MODE WIFI, 1 MODE LOCAL
@@ -114,6 +118,15 @@
 #define ADDR_PROG_PROGRESS        0x105A
 #define ADDR_PROG_TITLE_SHORT     0x105B
 #define ADDR_LANGUAGE             0x1030
+#define ADDR_MESSAGE              0x1031
+#define ADDR_STARTUP_TOUCH        0x1032
+#define MESSAGE_HIDDEN            0
+#define MSG_NONE                  -1
+#define MSG_ERR01                 0
+#define MSG_ERR02                 1
+#define MSG_ERR03                 2
+#define MSG_ERR04                 3
+#define MSG_BADGE                 4
 #define ADDR_GRID_SLOT            0x1080
 #define ADDR_PROG_PARAM_X         0x2020
 #define ADDR_PROG_PARAM           0x2030

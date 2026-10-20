@@ -32,6 +32,12 @@
  * tắt Xung thì ghi trả cường độ gốc và chờ màn hình nhận (SCREEN_SYNC_MS).
  * Cường độ 1..32 -> tốc độ CM8 0..32 làm tròn xuống số CHẴN (CM8 chỉ đứng yên đúng ở số chẵn).
  *
+ * Thông báo trên trang buổi tập (Icon 0x1031, dải dưới hàng nút, theo ngôn ngữ): bị chặn vì CM8 mất kết nối /
+ * CM8 báo lỗi 2 -> tạm dừng và báo task setting đưa về trang khởi động 0000 (page_session_take_cm8_lost, giống
+ * lúc mới bật: ERR.02, chờ CM8); CM8 báo lỗi 3 / 4 -> ERR.03 / 04 tại trang, tới khi CM8 hết lỗi; MODE WIFI chưa
+ * có mạng -> ERR.01 tới khi có mạng; Accès badgeuse chưa có thẻ / mất thẻ -> "Veuillez badger svp"
+ * BADGE_MESSAGE_MS. Rời trang thì xóa thông báo. Thông báo trang khởi động 0000: task setting.
+ *
  * Thông số: giới hạn dòng 3,70 A,
  * PREPARE_TIMEOUT_MS chờ CM8 về 0 trước lần chạy đầu, PAUSE_SCREEN_ON_ERROR: CM8 lỗi / mất kết nối
  * khi đang tập -> tạm dừng màn hình.
@@ -63,6 +69,7 @@
 #define TIME_SETTLE_MS            300
 #define DURATION_MIN_MIN          1
 #define DURATION_MIN_MAX          10
+#define BADGE_MESSAGE_MS          3000
 
 static QueueHandle_t touch_queue;
 
@@ -194,6 +201,53 @@ static void update_intensity(const hmi_data_t *d)
     }
 }
 
+static bool    net_alert = false, cm8_alert = false;
+static volatile bool cm8_lost = false;
+
+bool page_session_take_cm8_lost(void)
+{
+    bool r = cm8_lost;
+    cm8_lost = false;
+    return r;
+}
+static int64_t badge_until = 0;
+
+static int cm8_message(const motor_status_t *t)
+{
+    if (!t->connected || t->error == 2) return MSG_ERR02;
+    if (t->error == 3) return MSG_ERR03;
+    if (t->error == 4) return MSG_ERR04;
+    return MSG_NONE;
+}
+
+static void update_message(const hmi_data_t *d, bool session_page, const motor_status_t *t)
+{
+    static int page_prev = -1;
+    static uint16_t written = 0xFFFF;
+    if (d->page != page_prev) {
+        net_alert = cm8_alert = false;
+        badge_until = 0;
+        bool leaving_session = page_prev >= 0 && page_prev != PAGE_STARTUP;
+        page_prev = d->page;
+        if (!session_page) {
+            if (leaving_session && d->page != PAGE_STARTUP) hmi_write(ADDR_MESSAGE, MESSAGE_HIDDEN);
+            written = 0xFFFF;
+            return;
+        }
+        written = 0xFFFF;
+    }
+    if (!session_page || !hmi_is_linked(d)) return;
+    int msg = MSG_NONE;
+    if (cm8_alert)                    msg = cm8_message(t);
+    if (msg == MSG_NONE && net_alert) msg = MSG_ERR01;
+    if (msg == MSG_NONE && ms_now() < badge_until) msg = MSG_BADGE;
+    uint16_t v = msg == MSG_NONE ? MESSAGE_HIDDEN : LANG_ICON(msg, device_get_language());
+    if (v != written) {
+        hmi_write(ADDR_MESSAGE, v);
+        written = v;
+    }
+}
+
 static void task_session(void *arg)
 {
     (void)arg;
@@ -261,6 +315,7 @@ static void task_session(void *arg)
         if (link_ok && on_session && run_req && !net_ok && ms_now() - last_net_block_ms >= 500) {
             last_net_block_ms = ms_now();
             request_pause(on_program);
+            net_alert = true;
             log_send("   [CHE DO] MODE WIFI nhung chua co mang (%s) -> khong cho dong co chay, tam dung",
                      net_state_name(net_get_state()));
         }
@@ -282,6 +337,7 @@ static void task_session(void *arg)
         if (link_ok && on_session && run_req && !card_ok && ms_now() - last_card_block_ms >= 500) {
             last_card_block_ms = ms_now();
             request_pause(on_program);
+            badge_until = ms_now() + BADGE_MESSAGE_MS;
             if (!running_prev) log_send("   [THE] Acces badgeuse: chua co the (o 18 = %u) -> khong cho bat dau", t.card);
         }
 
@@ -385,11 +441,17 @@ static void task_session(void *arg)
             last_error_log_ms = ms_now();
             if (!t.connected) log_send("   [CM8] KHONG PHAN HOI - kiem tra nguon 220V, day, module SP3232");
             else            log_send("   [CM8] LOI %u (%s) - tat/bat lai nguon CM8", t.error, motor_error_name(t.error));
+            if (cm8_message(&t) == MSG_ERR02) cm8_lost = true;
+            else cm8_alert = true;
 #if PAUSE_SCREEN_ON_ERROR
             request_pause(on_program);
             log_send("   [CM8] -> tam dung buoi tap tren man hinh");
 #endif
         }
+
+        if (net_ok) net_alert = false;
+        if (cm8_ok) cm8_alert = false;
+        update_message(&d, on_session && d.page >= 0, &t);
 
         static int connected_prev = -1, error_prev = -1;
         if ((int)t.connected != connected_prev || (t.connected && (int)t.error != error_prev)) {

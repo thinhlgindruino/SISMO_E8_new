@@ -1,5 +1,5 @@
 PageID,WidgetName,Name    ,WriteAddr,Length,
-0,button_0,button_0, , ,0x0020,Page0001
+0,varAdj_9,varAdj_9,0x1032,2, , ,0x01
 1,button_0,button_0, , ,0x0020,Page0002
 1,button_1,button_1, , ,0x0020,Page0003
 1,button_2,button_1, , ,0x0020,Page0007

@@ -18,6 +18,12 @@
  *   ghi lại icon chữ phụ thuộc trạng thái của trang đang mở. Mỗi lần nối được màn hình (khởi động / màn
  *   hình vừa bật lại) ghi 0x1030 = ngôn ngữ đã lưu. Icon chữ phụ thuộc trạng thái = LANG_ICON(trạng thái,
  *   ngôn ngữ): mạng 0027, Statut / Accès 0029, Mode / Timer 0030.
+ * - Trang khởi động 0000: hiện tối thiểu PAGE_STARTUP_SHOW_MS rồi vào trang chính, nhưng (STARTUP_REQUIRE_CM8)
+ *   chỉ khi CM8 trả lời và không báo lỗi. CM8 báo lỗi 2 / 3 / 4 -> hiện ERR.02 / 03 / 04 (Icon 0x1031); chưa
+ *   trả lời sau STARTUP_CM8_WAIT_MS -> ERR.02; vẫn đứng ở 0000 tới khi CM8 bình thường. Chạm màn hình
+ *   (0x1032): CM8 bình thường -> vào trang chính ngay, chưa -> hiện lỗi ngay (không chờ 30 s). Đang tập mà
+ *   mất CM8 (page_session_take_cm8_lost) -> về 0000, hiện ERR.02 ngay, chờ như lúc mới bật. Chưa qua được
+ *   0000 mà màn hình sang trang khác -> đưa về lại 0000.
  * - Trước khi khởi động lại (Submit WiFi / OTA): đưa màn hình về trang 0.
  */
 #include <stdio.h>
@@ -42,6 +48,8 @@
 #define RELEASE_TIMEOUT_MS        1200
 #define IGNORE_AFTER_RELEASE_MS   400
 #define PAGE_STARTUP_SHOW_MS      3000
+#define STARTUP_CM8_WAIT_MS       30000
+#define STARTUP_MESSAGE_REFRESH_MS 1000
 
 static QueueHandle_t event_queue;
 
@@ -50,7 +58,7 @@ bool page_setting_on_event(const hmi_event_t *e)
     switch (e->addr) {
     case ADDR_SISMO_BUTTON: case ADDR_PASSWORD_KEY: case ADDR_SETTINGS_BUTTON: case ADDR_MODE_BUTTON:
     case ADDR_ACCESS_BUTTON: case ADDR_MOTOR_MODE_BUTTON: case ADDR_CARD_TIMER_BUTTON:
-    case ADDR_MOTOR_RATIO_BUTTON: case ADDR_MANUAL_BUTTON: case ADDR_LANGUAGE:
+    case ADDR_MOTOR_RATIO_BUTTON: case ADDR_MANUAL_BUTTON: case ADDR_LANGUAGE: case ADDR_STARTUP_TOUCH:
         break;
     default:
         return false;
@@ -316,6 +324,17 @@ static void on_language(uint16_t value, int page)
     if (page == PAGE_SETTINGS) hmi_write(ADDR_NETWORK_ICON, network_icon(net_get_state()));
 }
 
+static int startup_message(int64_t waited_ms, bool now_error, bool *cm8_ok)
+{
+    motor_status_t t = motor_get_status();
+    *cm8_ok = !STARTUP_REQUIRE_CM8 || (t.connected && t.error == 0);
+    if (*cm8_ok) return MSG_NONE;
+    if (t.connected && t.error == 3) return MSG_ERR03;
+    if (t.connected && t.error == 4) return MSG_ERR04;
+    if (t.connected || now_error || waited_ms >= STARTUP_CM8_WAIT_MS) return MSG_ERR02;
+    return MSG_NONE;
+}
+
 static void task_setting(void *arg)
 {
     (void)arg;
@@ -325,7 +344,9 @@ static void task_setting(void *arg)
     int64_t last_icon_write_ms = 0, left_page_ms = 0, startup_page_since = 0, last_cm8_icon_ms = 0;
     int     icon_written = -1;
     net_state_t prev_net = (net_state_t)-1;
-    bool    was_linked = false;
+    bool    was_linked = false, startup_done = false, startup_touched = false, startup_error_now = false;
+    uint16_t startup_msg_written = 0xFFFF;
+    int64_t startup_msg_ms = 0, last_startup_force_ms = 0;
 
     while (1) {
         hmi_event_t e;
@@ -342,6 +363,7 @@ static void task_setting(void *arg)
             else if (e.addr == ADDR_MODE_BUTTON)       on_mode_button(page);
             else if (e.addr == ADDR_ACCESS_BUTTON)     on_access_button(page);
             else if (e.addr == ADDR_LANGUAGE)          on_language(e.value, page);
+            else if (e.addr == ADDR_STARTUP_TOUCH)     startup_touched = page == PAGE_STARTUP;
             else                                       on_factory_button(e.addr, page);
         }
 
@@ -365,15 +387,53 @@ static void task_setting(void *arg)
             }
         }
 
-        if (page == PAGE_STARTUP) {
+        if (page_session_take_cm8_lost()) {
+            startup_done = false;
+            startup_error_now = true;
+            hmi_goto_page(PAGE_STARTUP);
+            log_send("   [KHOI DONG] Mat CM8 khi dang tap -> ve trang khoi dong, ERR.02, cho CM8");
+        }
+
+        if (page == PAGE_STARTUP && linked) {
             if (!startup_page_since) startup_page_since = now;
-            else if (now - startup_page_since >= PAGE_STARTUP_SHOW_MS) {
-                log_send("   [CAI DAT] Trang khoi dong %d ms -> trang chinh", PAGE_STARTUP_SHOW_MS);
+            bool cm8_ok;
+            if (startup_touched) {
+                startup_message(0, false, &cm8_ok);
+                if (!cm8_ok) startup_error_now = true;
+            }
+            int msg = startup_message(now - startup_page_since, startup_error_now, &cm8_ok);
+            uint16_t v = msg == MSG_NONE ? MESSAGE_HIDDEN : LANG_ICON(msg, device_get_language());
+            if (v != startup_msg_written || now - startup_msg_ms >= STARTUP_MESSAGE_REFRESH_MS) {
+                hmi_write(ADDR_MESSAGE, v);
+                if (v != startup_msg_written && msg != MSG_NONE)
+                    log_send("   [KHOI DONG] CM8 chua san sang -> hien ERR.0%d, cho CM8", msg + 1);
+                startup_msg_written = v;
+                startup_msg_ms = now;
+            }
+            if (cm8_ok && (startup_touched || now - startup_page_since >= PAGE_STARTUP_SHOW_MS)) {
+                if (startup_msg_written != MESSAGE_HIDDEN) hmi_write(ADDR_MESSAGE, MESSAGE_HIDDEN);
+                startup_msg_written = MESSAGE_HIDDEN;
+                log_send("   [CAI DAT] Trang khoi dong %d ms, CM8 OK -> trang chinh", PAGE_STARTUP_SHOW_MS);
                 hmi_goto_page(PAGE_MAIN);
                 startup_page_since = now;
+                startup_done = true;
+                startup_error_now = false;
             }
+            startup_touched = false;
         } else {
             startup_page_since = 0;
+            startup_msg_written = 0xFFFF;
+            if (linked && page >= 0 && !startup_done) {
+                bool cm8_ok;
+                startup_message(0, false, &cm8_ok);
+                if (cm8_ok) {
+                    startup_done = true;
+                } else if (now - last_startup_force_ms >= 1000) {
+                    last_startup_force_ms = now;
+                    hmi_goto_page(PAGE_STARTUP);
+                    log_send("   [KHOI DONG] CM8 chua san sang -> ve trang khoi dong");
+                }
+            }
         }
 
         if (page != prev_page) {

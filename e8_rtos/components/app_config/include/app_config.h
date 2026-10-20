@@ -19,6 +19,11 @@
  *   DEBUG_INTENSITY         in mỗi lần cường độ 0x1000 đổi (kèm thời gian)
  *   DEBUG_UNHANDLED_EVENTS  in sự kiện màn hình không trang nào nhận
  *   TEST_TASK_HANG          sau 20 s cố tình treo task hmi_poll để thử watchdog (để 0 khi dùng thật)
+ *   STARTUP_REQUIRE_CM8     1: trang khởi động 0000 chờ CM8 trả lời bình thường mới vào menu (thử bàn không
+ *                           có CM8 thì để 0)
+ *   DEBUG_FAKE_CM8_ERROR    thử thông báo lỗi khi không làm hỏng được CM8: 3 hoặc 4 -> sau
+ *                           DEBUG_FAKE_CM8_ERROR_AFTER_MS kể từ khi ESP32 bật, coi như CM8 báo lỗi đó (tới
+ *                           khi ESP32 khởi động lại); 0 = tắt (dùng thật)
  *
  * Thông số riêng của từng module nằm trong module đó:
  *   chân + baud màn hình   -> components/hmi/include/hmi.h
@@ -54,3 +59,6 @@
 #define DEBUG_INTENSITY           0
 #define DEBUG_UNHANDLED_EVENTS    0
 #define TEST_TASK_HANG            0
+#define STARTUP_REQUIRE_CM8       1
+#define DEBUG_FAKE_CM8_ERROR      0
+#define DEBUG_FAKE_CM8_ERROR_AFTER_MS 0

@@ -6,6 +6,8 @@
  *   cường độ / Xung trên đồng hồ, xử lý lỗi / mất kết nối (bắt màn hình tạm dừng).
  * Trang Programmes 0006 / 0014: task program gọi page_session_program(chạy, mức 0..32) mỗi chu kỳ;
  * khi an toàn / thẻ / mạng / CM8 bắt dừng thì page_session_program_take_pause() trả về true một lần.
+ * CM8 mất kết nối / báo lỗi 2 khi đang tập (hoặc bấm ▶): page_session_take_cm8_lost() trả về true một lần ->
+ * task setting đưa màn hình về trang khởi động và chờ CM8.
  * Kèm hook in tiến trình buổi tập (bắt đầu / tạm dừng / còn lại / cường độ) trong task logger.
  *
  * Trạng thái động cơ (session_motor_t):
@@ -40,3 +42,4 @@ session_status_t page_session_get_status(void);
 const char      *session_motor_name(session_motor_t m);
 void             page_session_program(bool run, int level);
 bool             page_session_program_take_pause(void);
+bool             page_session_take_cm8_lost(void);

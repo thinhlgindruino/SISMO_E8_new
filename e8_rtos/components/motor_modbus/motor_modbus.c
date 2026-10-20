@@ -189,6 +189,9 @@ motor_status_t motor_get_status(void)
     portENTER_CRITICAL(&lock);
     motor_status_t t = status;
     portEXIT_CRITICAL(&lock);
+#if DEBUG_FAKE_CM8_ERROR
+    if (t.connected && esp_timer_get_time() / 1000 >= DEBUG_FAKE_CM8_ERROR_AFTER_MS) t.error = DEBUG_FAKE_CM8_ERROR;
+#endif
     return t;
 }
 

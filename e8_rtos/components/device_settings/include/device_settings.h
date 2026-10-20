@@ -14,6 +14,7 @@
  *   motor_mode      200816  1..5 -> thanh ghi 8 (mode) của CM8                                   3
  *   motor_ratio     200816  2..17 -> thanh ghi 9 (ratio) của CM8                                 9
  *   manual_minutes  200816  5 / 90: thời gian buổi tập trang MANUAL                              5
+ *   language        74766   0..5: Français, English, Español, Italiano, Deutsch, Português       0
  *
  * motor_combo_ok(mode, ratio): CM8 tính dải tốc độ v_min..v_max = 42..79 + step * (mode - 3)
  * + 3 * (ratio - 9) (step 12 / 15 / 20 cho mode <= 3 / 4 / 5) và lưu dạng số không dấu -> dải phải nằm
@@ -36,6 +37,7 @@ typedef enum { CARD_TIMER_BADGEUSE = 0, CARD_TIMER_SISMO = 1 } card_timer_t;
 #define MOTOR_MODE_MAX            5
 #define MOTOR_RATIO_MIN           2
 #define MOTOR_RATIO_MAX           17
+#define LANGUAGE_COUNT            6
 
 void           device_settings_start(void);
 bool           device_storage_ok(void);
@@ -60,3 +62,6 @@ int            device_get_motor_ratio(void);
 bool           device_set_motor_ratio(int ratio);
 int            device_get_manual_minutes(void);
 bool           device_set_manual_minutes(int minutes);
+int            device_get_language(void);
+bool           device_set_language(int lang);
+const char    *language_name(int lang);

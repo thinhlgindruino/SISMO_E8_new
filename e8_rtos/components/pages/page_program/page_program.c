@@ -4,8 +4,11 @@
  *
  * Số bài 0x1007: 0..4 Tonification, 5..9 Remodelage, 10 Anti-cellulite, 11..12 Gainage,
  * 13..15 Relaxation, 16..21 Proprioception, 22..27 Perso 1..6 (trang 0007 ghi 0x1007 rồi tự sang 0014).
- * Tên bài = icon 0540 + (bài * 3 + mức) cho 16 bài đầu, 0540 + 48 + (bài - 16) cho Proprioception /
- * Perso (ghi 0x1051 = số thứ tự 1..60). Proprioception / Perso chỉ có 1 mức, nút < về 0025 / 0007.
+ * Tên bài số n = bài * 3 + mức + 1 (16 bài đầu) hoặc 48 + (bài - 16) + 1 (Proprioception / Perso), mỗi tên 6
+ * ngôn ngữ: n = 1..48 ở Icon 0x1051 (526x40, x = 55), n = 49..60 ở Icon 0x105B (190x40, x = 0) -> 2 Icon đè
+ * nhau nên lúc vào bài ghi cả 2 = 0 (ẩn), lần đọc parameterAddr đầu tiên mới ghi Icon cần hiện =
+ * LANG_ICON(n - 1 hoặc n - 49, ngôn ngữ). Proprioception / Perso chỉ có 1 mức, nút < về 0025 / 0007.
+ * Nút < ở trang mức độ 0005 (0x1059 = 6): về trang chọn bài của nhóm (0004 / 0021 / 0022 / 0023 / 0024).
  *
  * Vào trang buổi tập: ghi hình bài tập con đầu, tên bài, trục, cường độ cột đầu, thời gian; sau
  * PARAM_DELAY_MS đọc 10 word parameterAddr của Progress Bar (0x2020 / 0x2030; đọc lại tối đa 4 lần, hỏng
@@ -42,9 +45,13 @@
 #include "page_session.h"
 #include "page_program.h"
 #include "program_data.h"
+#include "grid_data.h"
+#include "device_settings.h"
 
 #define FIRST_PROPRIO             16
 #define FIRST_PERSO               22
+#define TITLE_SHORT_FIRST         49
+#define TITLE_NONE                0
 #define AXIS_SHORT_MAX_S          120
 #define LOOP_MS                   50
 #define PARAM_WORDS               10
@@ -101,6 +108,7 @@ static int drawn_level = -1;
 static int drawn_seconds = -1;
 static int drawn_sub = -1;
 static int logged_bar = -1;
+static int title_number = 1;
 
 static int64_t ms_now(void) { return esp_timer_get_time() / 1000; }
 static int clamp(int v, int lo, int hi) { return v < lo ? lo : (v > hi ? hi : v); }
@@ -159,7 +167,7 @@ static int pulse_offset(void)
 static int display_level(void)
 {
     int i = current_bar();
-    if (pulse && started()) return clamp(bar_high[i] + pulse_offset(), 1, COMB_LEVELS);
+    if (pulse && started()) return clamp(bar_high[i] + pulse_offset(), PROGRAM_COMB_MIN, COMB_LEVELS);
     return bar_level[i];
 }
 
@@ -283,7 +291,9 @@ static void show_program(void)
     build_bars();
     hmi_write(ADDR_PROG_ILLUS, p->subs[0].illus);
     drawn_sub = 0;
-    hmi_write(ADDR_PROG_TITLE, (uint16_t)title);
+    title_number = title;
+    hmi_write(ADDR_PROG_TITLE, TITLE_NONE);
+    hmi_write(ADDR_PROG_TITLE_SHORT, TITLE_NONE);
     hmi_write(ADDR_PROG_AXIS, seconds <= AXIS_SHORT_MAX_S ? 1 : 0);
     hmi_write(ADDR_PROG_LEVEL, LEVEL_HIDDEN);
     drawn_level = LEVEL_HIDDEN;
@@ -291,6 +301,18 @@ static void show_program(void)
     write_time(remaining_seconds());
     if (program >= FIRST_PROPRIO) log_send("   [PROGRAMME] %s | %d:%02d", p->name, seconds / 60, seconds % 60);
     else log_send("   [PROGRAMME] %s - %s | %d:%02d", p->name, LEVEL_NAMES[lv], seconds / 60, seconds % 60);
+}
+
+static void show_title(void)
+{
+    int lang = device_get_language();
+    if (title_number < TITLE_SHORT_FIRST) {
+        hmi_write(ADDR_PROG_TITLE_SHORT, TITLE_NONE);
+        hmi_write(ADDR_PROG_TITLE, LANG_ICON(title_number - 1, lang));
+    } else {
+        hmi_write(ADDR_PROG_TITLE, TITLE_NONE);
+        hmi_write(ADDR_PROG_TITLE_SHORT, LANG_ICON(title_number - TITLE_SHORT_FIRST, lang));
+    }
 }
 
 static void schedule_chart(void)
@@ -307,6 +329,7 @@ static void apply_chart(int page)
     if (chart_tries == PARAM_TRIES) {
         drawn_level = display_level();
         hmi_write(ADDR_PROG_LEVEL, (uint16_t)drawn_level);
+        show_title();
     }
     chart_tries--;
     bool got = hmi_read_words(param_addr, PARAM_WORDS, param, 300) && param_ok();
@@ -382,7 +405,12 @@ static bool read_program(void)
 static void show_grid(void)
 {
     const program_info_t *p = info();
-    hmi_write(ADDR_PROG_GRID, grid_page && p->grid2 ? p->grid2 : p->grid);
+    int g = (grid_page && p->grid2 ? p->grid2 : p->grid) - 1;
+    if (g < 0 || g >= GRID_COUNT) return;
+    uint16_t v[GRID_SLOTS + 1];
+    for (int i = 0; i < GRID_SLOTS; i++) v[i] = GRID_TILES[g][i];
+    v[GRID_SLOTS] = GRID_ARROW[g];
+    hmi_write_words(ADDR_GRID_SLOT, v, GRID_SLOTS + 1);
 }
 
 static void on_level(int value, int page)
@@ -430,8 +458,22 @@ static void on_pulse(void)
     log_send("   [PROGRAMME] Xung %s", pulse ? "BAT" : "TAT");
 }
 
+static int group_page(int prog)
+{
+    if (prog < 5)  return PAGE_TONIFICATION;
+    if (prog < 10) return PAGE_REMODELAGE;
+    if (prog < 11) return PAGE_ANTICELLULITE;
+    if (prog < 13) return PAGE_GAINAGE;
+    if (prog < FIRST_PROPRIO) return PAGE_RELAXATION;
+    return PAGE_PROGRAMMES;
+}
+
 static void on_button(int value, int page)
 {
+    if (value == PROG_BTN_BACK && page == PAGE_LEVEL) {
+        hmi_goto_page(read_program() ? group_page(program) : PAGE_PROGRAMMES);
+        return;
+    }
     if (program < 0) return;
     bool on_session = page == PAGE_PROGRAM_X || page == PAGE_PROGRAM;
     switch (value) {

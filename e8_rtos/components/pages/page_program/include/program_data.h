@@ -4,8 +4,9 @@
  * program_seg_t: đoạn cột liên tiếp của biểu đồ (số cột, mức cao, mức thấp; thấp = 0 -> mọi cột mức cao,
  * khác 0 -> cột xen kẽ cao / thấp bắt đầu bằng cao). Mỗi cột = 5 s (trục 10 phút) hoặc 1 s (bài <= 2 phút).
  * program_sub_t: bài tập con (số giây, hình minh họa 1..32 = icon 0500..0531; giây 0 = cả bài một hình).
- * program_profile_t: biểu đồ của một mức độ, chart = số thứ tự ảnh 0..59 (icon 0800 + chart xám,
- * 0860 + chart xanh).
+ * program_profile_t: biểu đồ của một mức độ, chart = số thứ tự ảnh (icon 0800 + chart xám, 0860 + chart
+ * xanh; bài-mức trùng biểu đồ dùng chung ảnh). PROGRAM_COMB_MIN: mức thấp nhất có ảnh cột đều Xung
+ * (icon 0920 + mức - 1, tới mức 32).
  */
 #pragma once
 #include <stdbool.h>
@@ -48,3 +49,4 @@ typedef struct {
 } program_info_t;
 
 extern const program_info_t PROGRAM_INFO[PROGRAM_COUNT];
+extern const uint8_t PROGRAM_COMB_MIN;

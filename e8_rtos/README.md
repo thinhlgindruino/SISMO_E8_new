@@ -53,7 +53,7 @@ Mỗi page nhận sự kiện thì đưa vào hàng đợi của mình rồi tr�
 |---|---|---|
 | 74700 | 0027 | WiFi: OFFLINE / ONLINE → Configuration WIFI (AP + web) |
 | 74710 | 0028 | MODE WIFI (phải ONLINE mới cho động cơ chạy) / MODE LOCAL (không cần mạng) |
-| 74766 | 0029 | Accès libre-service (không quan tâm thẻ) / Accès badgeuse (phải có thẻ), trạng thái CM8; ngôn ngữ (sau) |
+| 74766 | 0029 | Accès libre-service (không quan tâm thẻ) / Accès badgeuse (phải có thẻ), trạng thái thẻ; ngôn ngữ FR → EN → ES → IT → DE → PT (lưu settings.json) |
 | 200816 | 0030 | Mode 1..5 (thanh ghi 8 CM8), Card / Sismo Timer, Motor ratio 2..17 (thanh ghi 9), MANUAL 5' / 90' |
 
 Mode + ratio: CM8 dịch dải tốc độ 42..79 theo mode (12 / 15 / 20 mỗi bậc) và ratio (3 mỗi bậc, gốc 9); cặp làm dải ra ngoài 0..180

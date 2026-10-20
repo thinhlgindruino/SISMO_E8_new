@@ -3,8 +3,9 @@ programmes.py - Số liệu 54 bài Programmes + 6 bài Perso của E8 (đọc t
 
 Sửa số liệu ở PROGRAMS bên dưới rồi chạy:
     python programmes.py <thư mục HMI_E8> <thư mục e8_rtos>
--> sinh lại ảnh biểu đồ (Icon 0800..0859 xám, 0860..0919 xanh, 0920..0951 cột đều cho Xung) và file
-   components/pages/page_program/program_data.c, đồng thời in bảng kiểm tra.
+-> sinh lại ảnh biểu đồ (Icon 0800.. xám, 0860.. xanh: mỗi biểu đồ khác nhau 1 ảnh, bài-mức trùng biểu đồ
+   dùng chung; 0920 + mức - 1 cột đều cho Xung, chỉ các mức cần dùng), sửa dải icon giữ ảnh trong
+   Plugin/Page0006.cfg, Page0014.cfg, ghi components/pages/page_program/program_data.c và in bảng kiểm tra.
 
 Quy ước:
   - Biểu đồ có 120 vị trí cột: trục 10 phút -> mỗi cột 5 s; trục 2 phút (bài <= 2 phút) -> mỗi cột 1 s.
@@ -100,6 +101,7 @@ LEVELS = ("Débutant", "Initié", "Confirmé")
 CHART_W, CHART_H, PX_LEVEL, SLOTS = 480, 192, 6, 120
 BG, GRAY, GREEN = (14, 17, 26), (190, 196, 212), (60, 230, 40)
 ICON_GRAY, ICON_GREEN, ICON_COMB = 800, 860, 920
+PULSE = 3
 
 def bar_seconds(secs):
     return 1 if secs <= 120 else 5
@@ -144,17 +146,63 @@ def chart(levels, color):
             d.rectangle([4 * i, CHART_H - lv * PX_LEVEL, 4 * i + 1, CHART_H - 1], fill=color)
     return im
 
+def charts():
+    index, uniq = {}, []
+    for k, p, lv, prog in entries():
+        key = tuple(v for v, _ in bars(prog["prof"][lv]))
+        if key not in index:
+            index[key] = len(uniq)
+            uniq.append(key)
+        yield k, index[key], uniq
+
+def chart_map():
+    m, uniq = {}, []
+    for k, u, uniq in charts():
+        m[k] = u
+    return m, uniq
+
+def comb_min():
+    low = 32
+    for k, p, lv, prog in entries():
+        for n, hi, lo in prog["prof"][lv]:
+            low = min(low, max(1, hi - PULSE))
+    return low
+
 def write_images(hmi):
     icon = os.path.join(hmi, "Icon")
     for f in os.listdir(icon):
         if f[:4].isdigit() and (ICON_GRAY <= int(f[:4]) < ICON_GRAY + 60 or ICON_GREEN <= int(f[:4]) < ICON_GREEN + 60 or ICON_COMB <= int(f[:4]) < ICON_COMB + 32):
             os.remove(os.path.join(icon, f))
-    for k, p, lv, prog in entries():
-        lvls = [v for v, _ in bars(prog["prof"][lv])]
-        chart(lvls, GRAY).save(os.path.join(icon, "%04d_profil_gris_%02d.png" % (ICON_GRAY + k, k + 1)))
-        chart(lvls, GREEN).save(os.path.join(icon, "%04d_profil_vert_%02d.png" % (ICON_GREEN + k, k + 1)))
-    for lv in range(1, 33):
+    m, uniq = chart_map()
+    for u, lvls in enumerate(uniq):
+        chart(lvls, GRAY).save(os.path.join(icon, "%04d_profil_gris_%02d.png" % (ICON_GRAY + u, u + 1)))
+        chart(lvls, GREEN).save(os.path.join(icon, "%04d_profil_vert_%02d.png" % (ICON_GREEN + u, u + 1)))
+    for lv in range(comb_min(), 33):
         chart([lv] * SLOTS, GREEN).save(os.path.join(icon, "%04d_peigne_%02d.png" % (ICON_COMB + lv - 1, lv)))
+
+def update_cfg(hmi):
+    m, uniq = chart_map()
+    n, low = len(uniq), comb_min()
+    gray = ("%04d_profil_gris_01.png" % ICON_GRAY, "%04d_profil_gris_%02d.png" % (ICON_GRAY + n - 1, n))
+    green = ("%04d_profil_vert_01.png" % ICON_GREEN, "%04d_profil_vert_%02d.png" % (ICON_GREEN + n - 1, n))
+    comb = ("%04d_peigne_%02d.png" % (ICON_COMB + low - 1, low), "%04d_peigne_32.png" % (ICON_COMB + 31))
+    for page in ("Page0006.cfg", "Page0014.cfg"):
+        path = os.path.join(hmi, "Plugin", page)
+        with open(path, encoding="utf-8-sig") as f:
+            lines = f.read().splitlines()
+        out = []
+        for l in lines:
+            f = l.split(",")
+            if l.startswith("icon_") and len(f) > 14 and f[2] == "0x105D":
+                pair = gray if "profil_gris" in f[8] else green if "profil_vert" in f[8] else comb
+                f[8], f[9], f[12], f[13] = pair[0], pair[1], "1", str(n if pair is not comb else 33 - low)
+                l = ",".join(f)
+            elif l.startswith("progress_0:"):
+                f[9], f[13] = green[0], gray[0]
+                l = ",".join(f)
+            out.append(l)
+        with open(path, "w", encoding="utf-8-sig", newline="") as f:
+            f.write("\n".join(out) + "\n")
 
 def c_string(s):
     return s.encode("ascii", "replace").decode()
@@ -167,7 +215,7 @@ def write_c(rtos):
     L.append(" *")
     L.append(" * Mỗi bài: tên, có nút X, lưới bài tập con, thời lượng / mức độ, biểu đồ / mức độ (đoạn cột:")
     L.append(" * số cột, mức cao, mức thấp; mức thấp 0 = cùng mức), danh sách bài tập con (giây, hình 1..32).")
-    L.append(" * Số thứ tự biểu đồ (0..59) = icon 0800 + n (xám), 0860 + n (xanh).")
+    L.append(" * Số thứ tự biểu đồ = icon 0800 + n (xám), 0860 + n (xanh); bài-mức có cùng biểu đồ dùng chung 1 ảnh.")
     L.append(" */")
     L.append('#include "program_data.h"')
     L.append("")
@@ -177,6 +225,9 @@ def write_c(rtos):
     for p, prog in enumerate(PROGRAMS):
         L.append("static const program_sub_t SUB_%02d[] = { %s };" % (p, ", ".join("{ %d, %d }" % s for s in prog["sub"])))
     L.append("")
+    cmap, uniq = chart_map()
+    L.append("const uint8_t PROGRAM_COMB_MIN = %d;" % comb_min())
+    L.append("")
     L.append("const program_info_t PROGRAM_INFO[PROGRAM_COUNT] = {")
     k = 0
     for p, prog in enumerate(PROGRAMS):
@@ -185,7 +236,7 @@ def write_c(rtos):
         profs = []
         for lv in range(3):
             kk = k + min(lv, nl - 1)
-            profs.append("{ SEG_%02d, %d, %d }" % (kk, len(prog["prof"][min(lv, nl - 1)]), kk))
+            profs.append("{ SEG_%02d, %d, %d }" % (kk, len(prog["prof"][min(lv, nl - 1)]), cmap[kk]))
         L.append('    { "%s", %s, %d, %d, { %s }, { %s }, SUB_%02d, %d },' % (
             c_string(prog["name"]), "true" if prog["x"] else "false", prog["grid"][0], prog["grid"][1],
             ", ".join(str(s) for s in secs), ", ".join(profs), p, len(prog["sub"])))
@@ -209,5 +260,7 @@ if __name__ == "__main__":
         print("\n".join(errs)); sys.exit(1)
     if len(sys.argv) >= 3:
         write_images(sys.argv[1])
+        update_cfg(sys.argv[1])
         write_c(sys.argv[2])
+        print("%d biểu đồ khác nhau / %d bài-mức, cột đều Xung từ mức %d" % (len(chart_map()[1]), sum(1 for _ in entries()), comb_min()))
     print("\n".join(table()))

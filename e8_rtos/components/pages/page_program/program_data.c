@@ -3,7 +3,7 @@
  *
  * Mỗi bài: tên, có nút X, lưới bài tập con, thời lượng / mức độ, biểu đồ / mức độ (đoạn cột:
  * số cột, mức cao, mức thấp; mức thấp 0 = cùng mức), danh sách bài tập con (giây, hình 1..32).
- * Số thứ tự biểu đồ (0..59) = icon 0800 + n (xám), 0860 + n (xanh).
+ * Số thứ tự biểu đồ = icon 0800 + n (xám), 0860 + n (xanh); bài-mức có cùng biểu đồ dùng chung 1 ảnh.
  */
 #include "program_data.h"
 
@@ -97,6 +97,8 @@ static const program_sub_t SUB_25[] = { { 0, 32 } };
 static const program_sub_t SUB_26[] = { { 0, 32 } };
 static const program_sub_t SUB_27[] = { { 0, 32 } };
 
+const uint8_t PROGRAM_COMB_MIN = 3;
+
 const program_info_t PROGRAM_INFO[PROGRAM_COUNT] = {
     { "Tonification - Bras", true, 2, 0, { 300, 300, 300 }, { { SEG_00, 1, 0 }, { SEG_01, 1, 1 }, { SEG_02, 1, 2 } }, SUB_00, 8 },
     { "Tonification - Poitrine Bras", true, 1, 0, { 300, 300, 300 }, { { SEG_03, 2, 3 }, { SEG_04, 2, 4 }, { SEG_05, 2, 5 } }, SUB_01, 5 },
@@ -105,25 +107,25 @@ const program_info_t PROGRAM_INFO[PROGRAM_COUNT] = {
     { "Tonification - Complet", true, 4, 0, { 600, 600, 600 }, { { SEG_12, 7, 12 }, { SEG_13, 7, 13 }, { SEG_14, 7, 14 } }, SUB_04, 11 },
     { "Remodelage - Poitrine Bras", true, 1, 0, { 300, 300, 300 }, { { SEG_15, 2, 15 }, { SEG_16, 2, 16 }, { SEG_17, 2, 17 } }, SUB_05, 5 },
     { "Remodelage - Sangle abdominale", true, 8, 0, { 600, 600, 600 }, { { SEG_18, 1, 18 }, { SEG_19, 1, 19 }, { SEG_20, 1, 20 } }, SUB_06, 13 },
-    { "Remodelage - Cuisses Fessiers 1", true, 9, 0, { 600, 600, 600 }, { { SEG_21, 1, 21 }, { SEG_22, 1, 22 }, { SEG_23, 1, 23 } }, SUB_07, 13 },
-    { "Remodelage - Cuisses Fessiers 2", true, 7, 0, { 600, 600, 600 }, { { SEG_24, 11, 24 }, { SEG_25, 11, 25 }, { SEG_26, 11, 26 } }, SUB_08, 13 },
-    { "Remodelage - Complet", true, 5, 3, { 600, 600, 600 }, { { SEG_27, 8, 27 }, { SEG_28, 8, 28 }, { SEG_29, 8, 29 } }, SUB_09, 19 },
-    { "Anti-cellulite - Cuisses Fessiers", true, 10, 0, { 600, 600, 600 }, { { SEG_30, 10, 30 }, { SEG_31, 10, 31 }, { SEG_32, 10, 32 } }, SUB_10, 15 },
-    { "Gainage - Complet 1", false, 0, 0, { 120, 300, 600 }, { { SEG_33, 4, 33 }, { SEG_34, 5, 34 }, { SEG_35, 5, 35 } }, SUB_11, 1 },
-    { "Gainage - Complet 2", false, 0, 0, { 120, 300, 600 }, { { SEG_36, 1, 36 }, { SEG_37, 1, 37 }, { SEG_38, 1, 38 } }, SUB_12, 1 },
-    { "Relaxation Drainage - Drainage", false, 0, 0, { 300, 300, 300 }, { { SEG_39, 1, 39 }, { SEG_40, 1, 40 }, { SEG_41, 1, 41 } }, SUB_13, 1 },
-    { "Relaxation Drainage - Relax 1", false, 0, 0, { 300, 300, 300 }, { { SEG_42, 7, 42 }, { SEG_43, 7, 43 }, { SEG_44, 7, 44 } }, SUB_14, 1 },
-    { "Relaxation Drainage - Relax 2", false, 0, 0, { 300, 300, 300 }, { { SEG_45, 1, 45 }, { SEG_46, 10, 46 }, { SEG_47, 8, 47 } }, SUB_15, 1 },
-    { "Proprioception - 1", false, 0, 0, { 60, 60, 60 }, { { SEG_48, 6, 48 }, { SEG_48, 6, 48 }, { SEG_48, 6, 48 } }, SUB_16, 1 },
-    { "Proprioception - 2", false, 0, 0, { 120, 120, 120 }, { { SEG_49, 12, 49 }, { SEG_49, 12, 49 }, { SEG_49, 12, 49 } }, SUB_17, 1 },
-    { "Proprioception - 3", false, 0, 0, { 180, 180, 180 }, { { SEG_50, 18, 50 }, { SEG_50, 18, 50 }, { SEG_50, 18, 50 } }, SUB_18, 1 },
-    { "Proprioception - 4", false, 0, 0, { 300, 300, 300 }, { { SEG_51, 11, 51 }, { SEG_51, 11, 51 }, { SEG_51, 11, 51 } }, SUB_19, 1 },
-    { "Proprioception - 5", false, 0, 0, { 600, 600, 600 }, { { SEG_52, 10, 52 }, { SEG_52, 10, 52 }, { SEG_52, 10, 52 } }, SUB_20, 1 },
-    { "Proprioception - 6", false, 0, 0, { 600, 600, 600 }, { { SEG_53, 8, 53 }, { SEG_53, 8, 53 }, { SEG_53, 8, 53 } }, SUB_21, 1 },
-    { "Perso - 1", false, 0, 0, { 60, 60, 60 }, { { SEG_54, 1, 54 }, { SEG_54, 1, 54 }, { SEG_54, 1, 54 } }, SUB_22, 1 },
-    { "Perso - 2", false, 0, 0, { 120, 120, 120 }, { { SEG_55, 2, 55 }, { SEG_55, 2, 55 }, { SEG_55, 2, 55 } }, SUB_23, 1 },
-    { "Perso - 3", false, 0, 0, { 180, 180, 180 }, { { SEG_56, 3, 56 }, { SEG_56, 3, 56 }, { SEG_56, 3, 56 } }, SUB_24, 1 },
-    { "Perso - 4", false, 0, 0, { 60, 60, 60 }, { { SEG_57, 1, 57 }, { SEG_57, 1, 57 }, { SEG_57, 1, 57 } }, SUB_25, 1 },
-    { "Perso - 5", false, 0, 0, { 120, 120, 120 }, { { SEG_58, 2, 58 }, { SEG_58, 2, 58 }, { SEG_58, 2, 58 } }, SUB_26, 1 },
-    { "Perso - 6", false, 0, 0, { 180, 180, 180 }, { { SEG_59, 3, 59 }, { SEG_59, 3, 59 }, { SEG_59, 3, 59 } }, SUB_27, 1 },
+    { "Remodelage - Cuisses Fessiers 1", true, 9, 0, { 600, 600, 600 }, { { SEG_21, 1, 18 }, { SEG_22, 1, 19 }, { SEG_23, 1, 20 } }, SUB_07, 13 },
+    { "Remodelage - Cuisses Fessiers 2", true, 7, 0, { 600, 600, 600 }, { { SEG_24, 11, 21 }, { SEG_25, 11, 22 }, { SEG_26, 11, 23 } }, SUB_08, 13 },
+    { "Remodelage - Complet", true, 5, 3, { 600, 600, 600 }, { { SEG_27, 8, 24 }, { SEG_28, 8, 25 }, { SEG_29, 8, 26 } }, SUB_09, 19 },
+    { "Anti-cellulite - Cuisses Fessiers", true, 10, 0, { 600, 600, 600 }, { { SEG_30, 10, 27 }, { SEG_31, 10, 28 }, { SEG_32, 10, 29 } }, SUB_10, 15 },
+    { "Gainage - Complet 1", false, 0, 0, { 120, 300, 600 }, { { SEG_33, 4, 30 }, { SEG_34, 5, 31 }, { SEG_35, 5, 32 } }, SUB_11, 1 },
+    { "Gainage - Complet 2", false, 0, 0, { 120, 300, 600 }, { { SEG_36, 1, 33 }, { SEG_37, 1, 34 }, { SEG_38, 1, 33 } }, SUB_12, 1 },
+    { "Relaxation Drainage - Drainage", false, 0, 0, { 300, 300, 300 }, { { SEG_39, 1, 35 }, { SEG_40, 1, 36 }, { SEG_41, 1, 37 } }, SUB_13, 1 },
+    { "Relaxation Drainage - Relax 1", false, 0, 0, { 300, 300, 300 }, { { SEG_42, 7, 38 }, { SEG_43, 7, 39 }, { SEG_44, 7, 40 } }, SUB_14, 1 },
+    { "Relaxation Drainage - Relax 2", false, 0, 0, { 300, 300, 300 }, { { SEG_45, 1, 41 }, { SEG_46, 10, 42 }, { SEG_47, 8, 43 } }, SUB_15, 1 },
+    { "Proprioception - 1", false, 0, 0, { 60, 60, 60 }, { { SEG_48, 6, 44 }, { SEG_48, 6, 44 }, { SEG_48, 6, 44 } }, SUB_16, 1 },
+    { "Proprioception - 2", false, 0, 0, { 120, 120, 120 }, { { SEG_49, 12, 45 }, { SEG_49, 12, 45 }, { SEG_49, 12, 45 } }, SUB_17, 1 },
+    { "Proprioception - 3", false, 0, 0, { 180, 180, 180 }, { { SEG_50, 18, 46 }, { SEG_50, 18, 46 }, { SEG_50, 18, 46 } }, SUB_18, 1 },
+    { "Proprioception - 4", false, 0, 0, { 300, 300, 300 }, { { SEG_51, 11, 47 }, { SEG_51, 11, 47 }, { SEG_51, 11, 47 } }, SUB_19, 1 },
+    { "Proprioception - 5", false, 0, 0, { 600, 600, 600 }, { { SEG_52, 10, 28 }, { SEG_52, 10, 28 }, { SEG_52, 10, 28 } }, SUB_20, 1 },
+    { "Proprioception - 6", false, 0, 0, { 600, 600, 600 }, { { SEG_53, 8, 48 }, { SEG_53, 8, 48 }, { SEG_53, 8, 48 } }, SUB_21, 1 },
+    { "Perso - 1", false, 0, 0, { 60, 60, 60 }, { { SEG_54, 1, 34 }, { SEG_54, 1, 34 }, { SEG_54, 1, 34 } }, SUB_22, 1 },
+    { "Perso - 2", false, 0, 0, { 120, 120, 120 }, { { SEG_55, 2, 49 }, { SEG_55, 2, 49 }, { SEG_55, 2, 49 } }, SUB_23, 1 },
+    { "Perso - 3", false, 0, 0, { 180, 180, 180 }, { { SEG_56, 3, 50 }, { SEG_56, 3, 50 }, { SEG_56, 3, 50 } }, SUB_24, 1 },
+    { "Perso - 4", false, 0, 0, { 60, 60, 60 }, { { SEG_57, 1, 51 }, { SEG_57, 1, 51 }, { SEG_57, 1, 51 } }, SUB_25, 1 },
+    { "Perso - 5", false, 0, 0, { 120, 120, 120 }, { { SEG_58, 2, 52 }, { SEG_58, 2, 52 }, { SEG_58, 2, 52 } }, SUB_26, 1 },
+    { "Perso - 6", false, 0, 0, { 180, 180, 180 }, { { SEG_59, 3, 53 }, { SEG_59, 3, 53 }, { SEG_59, 3, 53 } }, SUB_27, 1 },
 };

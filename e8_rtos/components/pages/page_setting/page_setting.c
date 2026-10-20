@@ -14,6 +14,10 @@
  *   và CM8 còn trả lời, ngược lại déconnecté.
  * - Trang 0030: bấm Mode / Motor ratio tăng 1 (hết thì quay về đầu), 2 nút gạt đổi qua lại. Cặp
  *   Mode + ratio làm CM8 tràn số (motor_combo_ok, vd. Mode 1 + Ratio 2) bị bỏ qua, nhảy sang giá trị kế.
+ * - Ngôn ngữ (0x1030, 0..5): nút trang 0029 tự tăng vòng trên màn hình và báo về -> lưu settings.json,
+ *   ghi lại icon chữ phụ thuộc trạng thái của trang đang mở. Mỗi lần nối được màn hình (khởi động / màn
+ *   hình vừa bật lại) ghi 0x1030 = ngôn ngữ đã lưu. Icon chữ phụ thuộc trạng thái = LANG_ICON(trạng thái,
+ *   ngôn ngữ): mạng 0027, Statut / Accès 0029, Mode / Timer 0030.
  * - Trước khi khởi động lại (Submit WiFi / OTA): đưa màn hình về trang 0.
  */
 #include <stdio.h>
@@ -46,7 +50,7 @@ bool page_setting_on_event(const hmi_event_t *e)
     switch (e->addr) {
     case ADDR_SISMO_BUTTON: case ADDR_PASSWORD_KEY: case ADDR_SETTINGS_BUTTON: case ADDR_MODE_BUTTON:
     case ADDR_ACCESS_BUTTON: case ADDR_MOTOR_MODE_BUTTON: case ADDR_CARD_TIMER_BUTTON:
-    case ADDR_MOTOR_RATIO_BUTTON: case ADDR_MANUAL_BUTTON:
+    case ADDR_MOTOR_RATIO_BUTTON: case ADDR_MANUAL_BUTTON: case ADDR_LANGUAGE:
         break;
     default:
         return false;
@@ -76,7 +80,7 @@ static void clear_password(void)
 static uint16_t network_icon(net_state_t t)
 {
     switch (t) {
-    case NET_CONFIG: return NET_ICON_CONFIG;
+    case NET_CONFIG: return (uint16_t)(NET_ICON_CONFIG_BASE + device_get_language());
     case NET_ONLINE: return NET_ICON_ONLINE;
     default:         return NET_ICON_OFFLINE;
     }
@@ -195,7 +199,7 @@ static void start_config(const char *why)
         log_send("   [CAI DAT] Dong co dang chay -> khong vao che do cau hinh");
         return;
     }
-    hmi_write(ADDR_NETWORK_ICON, NET_ICON_CONFIG);
+    hmi_write(ADDR_NETWORK_ICON, network_icon(NET_CONFIG));
     log_send("   [CAI DAT] Bat che do cau hinh (%s): AP %s, mat khau %s, http://%s",
                 why, net_ap_name(), NET_AP_PASSWORD, NET_AP_IP);
     net_config_start();
@@ -237,14 +241,14 @@ static void on_mode_button(int page)
 
 static uint16_t card_status_icon(void)
 {
-    if (device_get_access_mode() == ACCESS_FREE) return 1;
     motor_status_t t = motor_get_status();
-    return (t.connected && t.card == 1) ? 1 : 0;
+    bool on = device_get_access_mode() == ACCESS_FREE || (t.connected && t.card == 1);
+    return LANG_ICON(on ? 1 : 0, device_get_language());
 }
 
 static void show_access_page(void)
 {
-    hmi_write(ADDR_ACCESS_ICON, device_get_access_mode() == ACCESS_CARD ? 1 : 0);
+    hmi_write(ADDR_ACCESS_ICON, LANG_ICON(device_get_access_mode() == ACCESS_CARD ? 1 : 0, device_get_language()));
     hmi_write(ADDR_CM8_STATUS_ICON, card_status_icon());
 }
 
@@ -260,8 +264,9 @@ static void on_access_button(int page)
 
 static void show_factory_page(void)
 {
-    hmi_write(ADDR_MOTOR_MODE_ICON,  (uint16_t)(device_get_motor_mode() - MOTOR_MODE_MIN));
-    hmi_write(ADDR_CARD_TIMER_ICON,  device_get_card_timer() == CARD_TIMER_SISMO ? 1 : 0);
+    int lang = device_get_language();
+    hmi_write(ADDR_MOTOR_MODE_ICON,  LANG_ICON(device_get_motor_mode() - MOTOR_MODE_MIN, lang));
+    hmi_write(ADDR_CARD_TIMER_ICON,  LANG_ICON(device_get_card_timer() == CARD_TIMER_SISMO ? 1 : 0, lang));
     hmi_write(ADDR_MOTOR_RATIO_ICON, (uint16_t)(device_get_motor_ratio() - MOTOR_RATIO_MIN));
     hmi_write(ADDR_MANUAL_ICON,      device_get_manual_minutes() == 90 ? 1 : 0);
 }
@@ -301,6 +306,16 @@ static void on_factory_button(uint16_t addr, int page)
     show_factory_page();
 }
 
+static void on_language(uint16_t value, int page)
+{
+    if (value >= LANGUAGE_COUNT || (int)value == device_get_language()) return;
+    device_set_language(value);
+    log_send("   [NGON NGU] -> %s", language_name(value));
+    if (page == PAGE_ACCESS)  show_access_page();
+    if (page == PAGE_FACTORY) show_factory_page();
+    if (page == PAGE_SETTINGS) hmi_write(ADDR_NETWORK_ICON, network_icon(net_get_state()));
+}
+
 static void task_setting(void *arg)
 {
     (void)arg;
@@ -310,6 +325,7 @@ static void task_setting(void *arg)
     int64_t last_icon_write_ms = 0, left_page_ms = 0, startup_page_since = 0, last_cm8_icon_ms = 0;
     int     icon_written = -1;
     net_state_t prev_net = (net_state_t)-1;
+    bool    was_linked = false;
 
     while (1) {
         hmi_event_t e;
@@ -325,10 +341,18 @@ static void task_setting(void *arg)
             else if (e.addr == ADDR_SETTINGS_BUTTON)   on_settings_button(page);
             else if (e.addr == ADDR_MODE_BUTTON)       on_mode_button(page);
             else if (e.addr == ADDR_ACCESS_BUTTON)     on_access_button(page);
+            else if (e.addr == ADDR_LANGUAGE)          on_language(e.value, page);
             else                                       on_factory_button(e.addr, page);
         }
 
         int64_t now = ms_now();
+
+        bool linked = hmi_is_linked(&d);
+        if (linked && !was_linked) {
+            hmi_write(ADDR_LANGUAGE, (uint16_t)device_get_language());
+            log_send("   [NGON NGU] %s", language_name(device_get_language()));
+        }
+        was_linked = linked;
 
         if (holding) {
             if (now - last_repeat_ms > RELEASE_TIMEOUT_MS) {

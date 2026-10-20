@@ -29,7 +29,7 @@ static const char *TAG = "SETTINGS";
 #define CM8_RATIO_STEP            3
 #define CM8_V_LIMIT               180
 
-typedef enum { S_CONTROL_MODE, S_ACCESS_MODE, S_CARD_TIMER, S_MOTOR_MODE, S_MOTOR_RATIO, S_MANUAL_MIN, S_COUNT } setting_id_t;
+typedef enum { S_CONTROL_MODE, S_ACCESS_MODE, S_CARD_TIMER, S_MOTOR_MODE, S_MOTOR_RATIO, S_MANUAL_MIN, S_LANGUAGE, S_COUNT } setting_id_t;
 
 typedef struct {
     const char *key;
@@ -44,6 +44,7 @@ static const setting_def_t SETTINGS[S_COUNT] = {
     [S_MOTOR_MODE]   = { "motor_mode",     MOTOR_MODE_MIN,  MOTOR_MODE_MAX,  3, { NULL, NULL } },
     [S_MOTOR_RATIO]  = { "motor_ratio",    MOTOR_RATIO_MIN, MOTOR_RATIO_MAX, 9, { NULL, NULL } },
     [S_MANUAL_MIN]   = { "manual_minutes", 5, 90, 5, { NULL, NULL } },
+    [S_LANGUAGE]     = { "language",       0, LANGUAGE_COUNT - 1, 0, { NULL, NULL } },
 };
 
 static bool fs_ok = false;
@@ -157,9 +158,10 @@ void device_settings_start(void)
     fs_ok = (e == ESP_OK);
     if (!fs_ok) { ESP_LOGE(TAG, "Khong mo duoc SPIFFS (%s) -> khong luu duoc cai dat", esp_err_to_name(e)); return; }
     load();
-    ESP_LOGI(TAG, "Cai dat: %s | %s | timer %s | mode %d | ratio %d | manual %d phut",
+    ESP_LOGI(TAG, "Cai dat: %s | %s | timer %s | mode %d | ratio %d | manual %d phut | %s",
              control_mode_name(get(S_CONTROL_MODE)), access_mode_name(get(S_ACCESS_MODE)),
-             card_timer_name(get(S_CARD_TIMER)), get(S_MOTOR_MODE), get(S_MOTOR_RATIO), get(S_MANUAL_MIN));
+             card_timer_name(get(S_CARD_TIMER)), get(S_MOTOR_MODE), get(S_MOTOR_RATIO), get(S_MANUAL_MIN),
+             language_name(get(S_LANGUAGE)));
 }
 
 const char *control_mode_name(control_mode_t m) { return m == CONTROL_MODE_WIFI ? "MODE WIFI" : "MODE LOCAL"; }
@@ -178,3 +180,11 @@ int            device_get_motor_ratio(void)           { return get(S_MOTOR_RATIO
 bool           device_set_motor_ratio(int ratio)      { return set(S_MOTOR_RATIO, ratio); }
 int            device_get_manual_minutes(void)        { return get(S_MANUAL_MIN); }
 bool           device_set_manual_minutes(int minutes) { return set(S_MANUAL_MIN, minutes); }
+int            device_get_language(void)              { return get(S_LANGUAGE); }
+bool           device_set_language(int lang)          { return set(S_LANGUAGE, lang); }
+
+const char *language_name(int lang)
+{
+    static const char *NAMES[LANGUAGE_COUNT] = { "Francais", "English", "Espanol", "Italiano", "Deutsch", "Portugues" };
+    return (lang >= 0 && lang < LANGUAGE_COUNT) ? NAMES[lang] : "?";
+}

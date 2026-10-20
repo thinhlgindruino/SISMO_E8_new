@@ -8,21 +8,26 @@
  *                   [5] Xung, [6] Perso 1..6, [7] Programmes 0..21, [9] cấp độ 0..2
  *   0x1011          phím trang mật khẩu (0..9, 10 = C); ESP32 ghi lại KEY_EMPTY sau mỗi lần đọc
  *   0x1012          chữ "Sismo" trên mọi trang (giữ = giá trị tăng liên tục)
- *   0x1013 / 0x1040 nút / icon trạng thái mạng trang 0027: 0 OFFLINE, 1 Configuration WIFI, 2 ONLINE
+ *   0x1030          ngôn ngữ 0..5 (Français, English, Español, Italiano, Deutsch, Português): mọi icon
+ *                   chữ cố định đọc biến này; nút ngôn ngữ trang 0029 tự tăng vòng và báo về ESP32
+ *   Icon chữ phụ thuộc trạng thái: giá trị = LANG_ICON(trạng thái, ngôn ngữ) = trạng thái * 6 + ngôn ngữ + 1
+ *   0x1013 / 0x1040 nút / icon mạng trang 0027: 1 OFFLINE, 2 ONLINE, 3 + ngôn ngữ = Configuration WIFI
  *   0x1014 / 0x1041 nút / icon trang 0028: 0 MODE WIFI, 1 MODE LOCAL
- *   0x1015 / 0x1042 nút / icon Mode 1..5 (icon 0..4)                     trang 0030
- *   0x1016 / 0x1043 nút / icon Card Timer / Sismo Timer (0 / 1)           trang 0030
+ *   0x1015 / 0x1042 nút / icon Mode 1..5 (trạng thái 0..4, theo ngôn ngữ)   trang 0030
+ *   0x1016 / 0x1043 nút / icon Card Timer / Sismo Timer (0 / 1, theo ngôn ngữ) trang 0030
  *   0x1017 / 0x1044 nút / icon Motor ratio 2..17 (icon 0..15)             trang 0030
  *   0x1018 / 0x1045 nút / icon MANUAL 5' / 90' (0 / 1)                    trang 0030
- *   0x1019 / 0x1046 nút / icon Accès libre-service / badgeuse (0 / 1)     trang 0029
- *   0x1047          icon "E8 CM8 - Statut" (trạng thái thẻ): 0 déconnecté, 1 connecté   trang 0029
+ *   0x1019 / 0x1046 nút / icon Accès libre-service / badgeuse (0 / 1, theo ngôn ngữ) trang 0029
+ *   0x1047          icon "E8 CM8 - Statut" (thẻ): 0 déconnecté, 1 connecté (theo ngôn ngữ) trang 0029
  *   0x1048          thời gian hiện trên màn hình = phút * 100 + giây (vd. 9000 = 90:00)   trang 0010
  *   0x1039          số dấu * trên trang mật khẩu (0..6)
  *   0x1020          số phút trang Durée Exercices (0002), 1..10: nút - / + và icon vòng tròn
- *   0x1050..0x105B  trang buổi tập Programmes 0006 / 0014 và trang bài tập con 0013: hình minh họa 1..32,
- *                   tên bài 1..54, trục (0 = 10 phút, 1 = 2 phút), phút, giây, vòng cường độ 1..32,
- *                   icon X (0 sáng / 1 xám), Xung, Play / Pause, nút (1 X, 2 Xung, 3 Play, 4 Stop,
- *                   5 mũi tên, 6 <), Progress Bar, lưới bài tập con 1..10 (cùng 1 Icon, ảnh 600×921)
+ *   0x1050..0x105A  trang buổi tập Programmes / Perso 0006 / 0014: hình minh họa 1..32, tên bài 1..48
+ *                   (theo ngôn ngữ, 0 = ẩn; tên 49..60 Proprioception / Perso nằm ở 0x105B),
+ *                   trục (0 = 10 phút, 1 = 2 phút), phút, giây, vòng cường độ 1..32, icon X (0 sáng /
+ *                   1 xám), Xung, Play / Pause, nút (1 X, 2 Xung, 3 Play, 4 Stop, 5 mũi tên, 6 <), Progress Bar
+ *   0x1080..0x108E  trang bài tập con 0013: 15 ô (3 cột x 5 hàng), số ảnh ô 1..N (icon 1000..), 0 = trống
+ *   0x108F          mũi tên trang 0013: 0 không, 1 >, 2 <
  *   0x105D / 0x105E icon giữ ảnh biểu đồ (không ghi) / icon cố định (luôn 0: dấu ":" và nút Stop)
  *   0x2020 / 0x2030 parameterAddr Progress Bar trang 0006 / 0014
  *   0x700A          phát file WAV thứ N trong WavBin (1 = tiếng bíp)
@@ -57,6 +62,12 @@
 #define PAGE_PROGRAM              14
 #define PAGE_PROPRIO              25
 #define PAGE_PERSO                7
+#define PAGE_PROGRAMMES           3
+#define PAGE_TONIFICATION         4
+#define PAGE_REMODELAGE           21
+#define PAGE_ANTICELLULITE        22
+#define PAGE_GAINAGE              23
+#define PAGE_RELAXATION           24
 
 #define ADDR_VAR_BASE             0x1000
 #define HMI_VAR_COUNT             10
@@ -101,7 +112,9 @@
 #define ADDR_PROG_PLAY_ICON       0x1058
 #define ADDR_PROG_BUTTON          0x1059
 #define ADDR_PROG_PROGRESS        0x105A
-#define ADDR_PROG_GRID            0x105B
+#define ADDR_PROG_TITLE_SHORT     0x105B
+#define ADDR_LANGUAGE             0x1030
+#define ADDR_GRID_SLOT            0x1080
 #define ADDR_PROG_PARAM_X         0x2020
 #define ADDR_PROG_PARAM           0x2030
 #define PROG_BTN_X                1
@@ -117,9 +130,11 @@
 #define KEY_CLEAR                 10
 #define KEY_EMPTY                 0xFFFF
 
-#define NET_ICON_OFFLINE          0
-#define NET_ICON_CONFIG           1
+#define LANG_COUNT                6
+#define LANG_ICON(state, lang)    ((uint16_t)((state) * LANG_COUNT + (lang) + 1))
+#define NET_ICON_OFFLINE          1
 #define NET_ICON_ONLINE           2
+#define NET_ICON_CONFIG_BASE      3
 
 bool hmi_is_session_page(int page);
 void hmi_page_name(int page, char *out, size_t n);

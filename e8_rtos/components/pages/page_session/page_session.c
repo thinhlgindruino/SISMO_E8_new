@@ -8,6 +8,9 @@
  *
  * Cho chạy khi: còn liên lạc màn hình, đang ở trang buổi tập, 0x1001 = 1, không bị bắt dừng,
  * (MODE LOCAL hoặc ONLINE), và (Accès libre-service hoặc có thẻ). Không đủ -> ghi 0x1001 = 0 (tạm dừng).
+ * Trang Programmes (0006 / 0014): task program báo "đang chạy + mức 0..32" qua page_session_program()
+ * thay cho 0x1001 / 0x1000 (mức 0 = lúc bíp đếm ngược: động cơ chuẩn bị, tốc độ 0); cần tạm dừng thì
+ * đặt cờ cho task program đọc bằng page_session_program_take_pause() thay vì ghi 0x1001.
  *
  * Thẻ (Accès badgeuse, trang 74766): từ CM8 ra 2 dây thẻ (chân IN1 / A3 và GND); 2 dây chập nhau
  * = có thẻ, CM8 ghi thanh ghi 18 = 1;
@@ -18,6 +21,8 @@
  *
  * Mode / ratio gửi CM8 (thanh ghi 8 / 9) lấy từ cài đặt trang 200816. Vào trang MANUAL (0010) khi
  * chưa chạy -> ghi thời gian buổi tập 5 / 90 phút (cài đặt 200816) vào 0x1003.
+ * Trang Durée Exercices (0002): mỗi lần vào trang ghi 0x1020 = 1 phút; nút - / + (reportToHost) báo số
+ * phút mới; vào trang buổi tập Durée (0011) khi chưa chạy -> ghi số phút * 60 vào 0x1003.
  * Hiện thời gian dạng MM:SS tới 99:59: widget Timer (đếm 0x1003) để ẩn, ESP32 ghi phút * 100 + giây
  * vào 0x1048 cho 1 Graphics Number Display (dấu thập phân là icon dấu ":") mỗi khi 0x1003 đổi.
  *
@@ -56,6 +61,8 @@
 #define SCREEN_SYNC_MS            600
 #define SESSION_PERIOD_MS         50
 #define TIME_SETTLE_MS            300
+#define DURATION_MIN_MIN          1
+#define DURATION_MIN_MAX          10
 
 static QueueHandle_t touch_queue;
 
@@ -69,6 +76,39 @@ static session_motor_t mode = SESSION_FAN_ONLY;
 static int64_t mode_changed_ms = 0;
 
 static int64_t ms_now(void) { return esp_timer_get_time() / 1000; }
+
+static bool prog_run_req = false;
+static int  prog_level_req = 0;
+static bool prog_pause_req = false;
+
+void page_session_program(bool run, int level)
+{
+    portENTER_CRITICAL(&lock);
+    prog_run_req = run;
+    prog_level_req = level;
+    portEXIT_CRITICAL(&lock);
+}
+
+bool page_session_program_take_pause(void)
+{
+    portENTER_CRITICAL(&lock);
+    bool r = prog_pause_req;
+    prog_pause_req = false;
+    portEXIT_CRITICAL(&lock);
+    return r;
+}
+
+static void request_pause(bool on_program)
+{
+    if (on_program) {
+        portENTER_CRITICAL(&lock);
+        prog_pause_req = true;
+        prog_run_req = false;
+        portEXIT_CRITICAL(&lock);
+    } else {
+        hmi_write(ADDR_RUN, 0);
+    }
+}
 
 static int64_t last_time_write_ms = 0;
 
@@ -88,8 +128,14 @@ session_status_t page_session_get_status(void)
     return t;
 }
 
+static volatile int duration_minutes = 1;
+
 bool page_session_on_event(const hmi_event_t *e)
 {
+    if (e->addr == ADDR_DURATION_MIN) {
+        if (e->value >= DURATION_MIN_MIN && e->value <= DURATION_MIN_MAX) duration_minutes = e->value;
+        return true;
+    }
     if (e->addr != ADDR_INTENSITY) return false;
     if (e->source == EV_SRC_REPORT && touch_queue) xQueueSend(touch_queue, &e->value, 0);
     return true;
@@ -184,6 +230,12 @@ static void task_session(void *arg)
         hmi_data_t d = hmi_get();
         t = motor_get_status();
         bool link_ok = hmi_is_linked(&d);
+        bool on_program = d.page == PAGE_PROGRAM_X || d.page == PAGE_PROGRAM;
+        portENTER_CRITICAL(&lock);
+        bool prog_run = prog_run_req;
+        int  prog_level = prog_level_req;
+        portEXIT_CRITICAL(&lock);
+        bool run_req = on_program ? prog_run : d.vars[VAR_RUN] == 1;
 
         if (link_prev && !link_ok && running_prev) {
             pause_required = true;
@@ -193,22 +245,22 @@ static void task_session(void *arg)
         link_prev = link_ok;
 
         if (pause_required && link_ok) {
-            if (d.vars[VAR_RUN] == 0) {
+            if (!run_req) {
                 pause_required = false;
                 log_send("   [AN TOAN] Man hinh da tam dung, bam > de tap tiep");
             } else if (ms_now() - last_pause_write_ms >= 500) {
                 last_pause_write_ms = ms_now();
-                hmi_write(ADDR_RUN, 0);
+                request_pause(on_program);
                 log_send("   [AN TOAN] %s -> tam dung buoi tap tren man hinh", pause_reason);
             }
         }
 
-        bool on_session = (d.page < 0 || hmi_is_session_page(d.page));
+        bool on_session = (d.page < 0 || hmi_is_session_page(d.page) || on_program);
         bool net_ok = device_get_control_mode() == CONTROL_MODE_LOCAL || net_get_state() == NET_ONLINE;
         static int64_t last_net_block_ms = 0;
-        if (link_ok && on_session && d.vars[VAR_RUN] == 1 && !net_ok && ms_now() - last_net_block_ms >= 500) {
+        if (link_ok && on_session && run_req && !net_ok && ms_now() - last_net_block_ms >= 500) {
             last_net_block_ms = ms_now();
-            hmi_write(ADDR_RUN, 0);
+            request_pause(on_program);
             log_send("   [CHE DO] MODE WIFI nhung chua co mang (%s) -> khong cho dong co chay, tam dung",
                      net_state_name(net_get_state()));
         }
@@ -227,9 +279,9 @@ static void task_session(void *arg)
             }
         }
         bool card_ok = !card_required || card_present || (card_grace && running_prev);
-        if (link_ok && on_session && d.vars[VAR_RUN] == 1 && !card_ok && ms_now() - last_card_block_ms >= 500) {
+        if (link_ok && on_session && run_req && !card_ok && ms_now() - last_card_block_ms >= 500) {
             last_card_block_ms = ms_now();
-            hmi_write(ADDR_RUN, 0);
+            request_pause(on_program);
             if (!running_prev) log_send("   [THE] Acces badgeuse: chua co the (o 18 = %u) -> khong cho bat dau", t.card);
         }
 
@@ -242,7 +294,7 @@ static void task_session(void *arg)
             shown_seconds = minutes * 60;
             last_time_write_ms = ms_now();
             log_send("   [MANUAL] Thoi gian buoi tap %d phut", minutes);
-        } else if (link_ok && on_session) {
+        } else if (link_ok && on_session && !on_program) {
             int s = d.vars[VAR_SECONDS];
             if ((s != shown_seconds && ms_now() - last_time_write_ms >= TIME_SETTLE_MS) || d.page != prev_page) {
                 show_time(s);
@@ -251,12 +303,22 @@ static void task_session(void *arg)
         } else {
             shown_seconds = -1;
         }
+        if (d.page == PAGE_DUREE && prev_page != PAGE_DUREE) {
+            duration_minutes = DURATION_MIN_MIN;
+            hmi_write(ADDR_DURATION_MIN, DURATION_MIN_MIN);
+        }
+        if (d.page == PAGE_DUREE_SESSION && prev_page != PAGE_DUREE_SESSION && d.vars[VAR_RUN] == 0) {
+            int minutes = duration_minutes;
+            hmi_write(ADDR_SECONDS, (uint16_t)(minutes * 60));
+            last_time_write_ms = ms_now();
+            log_send("   [DUREE] Thoi gian buoi tap %d phut", minutes);
+        }
         prev_page = d.page;
 
-        bool run_allowed = link_ok && !pause_required && on_session && net_ok && card_ok && d.vars[VAR_RUN] == 1;
+        bool run_allowed = link_ok && !pause_required && on_session && net_ok && card_ok && run_req;
 
         update_intensity(&d);
-        bool want_pulse = run_allowed && d.vars[VAR_PULSE] == 1;
+        bool want_pulse = run_allowed && !on_program && d.vars[VAR_PULSE] == 1;
         if (want_pulse && !pulse_active) {
             pulse_active = true;
             pulse_written = base_intensity;
@@ -266,7 +328,8 @@ static void task_session(void *arg)
             hmi_write(ADDR_INTENSITY, (uint16_t)base_intensity);
             screen_sync_until = ms_now() + SCREEN_SYNC_MS;
         }
-        int target_level = run_allowed ? clamp(base_intensity + 1 + (pulse_active ? pulse_offset() : 0), 1, 32) : 0;
+        int target_level = !run_allowed ? 0 : on_program ? clamp(prog_level, 0, 32) :
+                           clamp(base_intensity + 1 + (pulse_active ? pulse_offset() : 0), 1, 32);
         if (pulse_active && target_level - 1 != pulse_written) {
             pulse_written = target_level - 1;
             hmi_write(ADDR_INTENSITY, (uint16_t)pulse_written);
@@ -323,7 +386,7 @@ static void task_session(void *arg)
             if (!t.connected) log_send("   [CM8] KHONG PHAN HOI - kiem tra nguon 220V, day, module SP3232");
             else            log_send("   [CM8] LOI %u (%s) - tat/bat lai nguon CM8", t.error, motor_error_name(t.error));
 #if PAUSE_SCREEN_ON_ERROR
-            hmi_write(ADDR_RUN, 0);
+            request_pause(on_program);
             log_send("   [CM8] -> tam dung buoi tap tren man hinh");
 #endif
         }

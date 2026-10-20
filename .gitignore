@@ -10,3 +10,4 @@ Make_info.txt
 Make_error_info.txt
 *.bak
 *.bak1
+*.cfb*

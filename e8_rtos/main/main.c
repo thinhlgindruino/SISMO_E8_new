@@ -9,6 +9,7 @@
  *   ui_router           chia sự kiện màn hình cho từng trang
  *   pages/page_session  trang buổi tập: điều khiển động cơ, cường độ, Xung    task session (6)
  *   pages/page_setting  Sismo, mật khẩu, trang 74700 / 74710 / 74766 / 200816  task setting (3)
+ *   pages/page_program  Programmes: mức độ, trang 0006 / 0014 / 0013, chạy bài   task program (3)
  *   network             WiFi STA/AP, web 192.168.10.100, wifi.json             (core 0)
  *   ota                 cập nhật firmware qua web (tab Upload) + tự quay về bản cũ khi bản mới lỗi
  *   logger              in log ra Monitor                                      task logger (2)
@@ -30,6 +31,7 @@
 #include "ui_router.h"
 #include "page_session.h"
 #include "page_setting.h"
+#include "page_program.h"
 #include "network.h"
 #include "ota.h"
 #include "device_settings.h"
@@ -68,8 +70,9 @@ void app_main(void)
     page_session_start();
     net_start();
     page_setting_start();
+    page_program_start();
     ota_start();
 
-    printf("Da tao 6 task: session, motor, hmi_rx, hmi_poll, setting, logger | AP cau hinh: %s\n",
+    printf("Da tao 7 task: session, motor, hmi_rx, hmi_poll, setting, program, logger | AP cau hinh: %s\n",
            net_ap_name());
 }

@@ -5,6 +5,8 @@
  *
  * Nối dây: GPIO16 (RX ESP32) <- TXA màn hình, GPIO17 (TX ESP32) -> RXB màn hình, GND chung.
  * 115200 baud. Quá HMI_LINK_TIMEOUT_MS (2 s) không nhận được dữ liệu -> coi như mất màn hình.
+ * Mỗi lần có lại liên lạc với màn hình: ghi âm lượng loa HMI_VOLUME (0..16) vào thanh ghi 0x700B
+ * (loa rời cắm CON6, phát WAV; tiếng "tách" khi chạm là còi BZ1, không theo âm lượng này).
  *
  * Khung: 5A A5 | độ dài | lệnh | addr H L | data ... | CRC16 Modbus (L H)
  *   0x10 ghi biến, 0x03 đọc biến, 0x41 màn hình tự báo khi bấm nút (reportToHost)
@@ -17,6 +19,8 @@
  *
  * hmi_get() trả về bản sao dữ liệu mới nhất (an toàn giữa các task); hmi_write() gọi từ task nào
  * cũng được (uart_write_bytes có khóa riêng nên không bị xen byte).
+ * hmi_write_words / hmi_read_words: ghi nhiều word, đọc vùng bất kỳ (không gọi hmi_read_words trong
+ * task hmi_rx).
  */
 #pragma once
 #include <stdint.h>
@@ -28,6 +32,8 @@
 #define HMI_TX_PIN                17
 #define HMI_BAUD                  115200
 #define HMI_LINK_TIMEOUT_MS       2000
+#define HMI_MAX_WORDS             120
+#define HMI_VOLUME                3
 
 typedef struct {
     int      page;
@@ -46,6 +52,8 @@ hmi_data_t hmi_get(void);
 bool       hmi_is_linked(const hmi_data_t *d);
 void       hmi_write(uint16_t addr, uint16_t value);
 void       hmi_goto_page(int page);
+void       hmi_write_words(uint16_t addr, const uint16_t *v, int n);
+bool       hmi_read_words(uint16_t addr, int n, uint16_t *out, int timeout_ms);
 
 typedef struct {
     uint32_t rx_bytes;

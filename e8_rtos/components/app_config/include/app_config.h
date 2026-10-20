@@ -8,6 +8,7 @@
  *   hmi_rx   5   nhận khung từ màn hình
  *   hmi_poll 4   hỏi màn hình định kỳ
  *   setting  3   Sismo, mật khẩu, trang cài đặt (bật AP + web chạy trong task này -> stack 5120)
+ *   program  3   Programmes: chọn mức độ, trang buổi tập, bài tập con
  *   logger   2   in log (thấp nhất để không làm chậm điều khiển)
  *
  * WDT_TIMEOUT_MS: task nào không báo "còn sống" quá 3 s -> ESP32 khởi động lại.
@@ -34,12 +35,14 @@
 #define PRIO_HMI_RX               5
 #define PRIO_HMI_POLL             4
 #define PRIO_SETTING              3
+#define PRIO_PROGRAM              3
 #define PRIO_LOGGER               2
 
 #define STACK_SESSION             4096
 #define STACK_MOTOR               4096
 #define STACK_HMI                 4096
 #define STACK_SETTING             5120
+#define STACK_PROGRAM             4096
 #define STACK_LOGGER              4096
 
 #define APP_CORE                  1

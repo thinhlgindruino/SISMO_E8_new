@@ -19,8 +19,9 @@ e8_rtos/
     ├── motor_modbus/         Modbus RTU với CM8 (task motor)
     ├── ui_router/            chia sự kiện màn hình cho từng trang
     ├── pages/
-    │   ├── page_session/     trang buổi tập 6/8/10/11: động cơ, cường độ, Xung, an toàn (task session)
-    │   └── page_setting/     Sismo, mật khẩu, 74700 cài đặt WiFi, 74710 MODE WIFI/LOCAL, trang khởi động (task setting)
+    │   ├── page_session/     trang buổi tập 8/10/11 + động cơ cho Programmes 6/14: cường độ, Xung, an toàn (task session)
+    │   ├── page_setting/     Sismo, mật khẩu, 74700 / 74710 / 74766 / 200816, trang khởi động (task setting)
+    │   └── page_program/     Programmes: mức độ, trang 0006 / 0014 / 0013, chạy bài; program_data.c sinh bởi tools/programmes.py (task program)
     ├── network/              WiFi STA + AP cấu hình, web 192.168.10.100, wifi.json
     └── ota/                  cập nhật firmware qua web + rollback
 ```
@@ -29,7 +30,8 @@ Phụ thuộc (mũi tên = "dùng"):
 
 ```
 main ──► tất cả
-ui_router ──► page_session, page_setting, hmi
+ui_router ──► page_session, page_setting, page_program, hmi
+page_program ──► hmi, page_session
 page_setting ──► hmi, network, page_session
 page_session ──► hmi, motor_modbus
 network ──► ota
@@ -40,7 +42,8 @@ hmi, motor_modbus, logger, ota ──► (chỉ ESP-IDF + app_config)
 
 ```
 màn hình ──UART──► hmi_rx ──► ui_router ──► page_session_on_event()   (0x1000 cường độ +/-)
-                                       └──► page_setting_on_event()   (0x1011 phím, 0x1012 Sismo, 0x1013 nút WiFi)
+                                       ├──► page_setting_on_event()   (0x1011 phím, 0x1012 Sismo, 0x1013 nút WiFi)
+                                       └──► page_program_on_event()   (0x1009 mức độ, 0x1059 nút trang buổi tập)
 ```
 Mỗi page nhận sự kiện thì đưa vào hàng đợi của mình rồi trả về ngay; task của page xử lý sau.
 

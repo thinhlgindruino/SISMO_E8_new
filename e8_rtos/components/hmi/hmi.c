@@ -17,6 +17,9 @@
  * hmi_poll (mỗi 50 ms gửi 1 câu hỏi, xen kẽ):
  *   0x1011..0x1012 mỗi 100 ms; còn lại luân phiên 0x1000..0x1009 và trang 0x7000.
  *
+ * Ghi nhiều word: hmi_write_words() chia khung tối đa HMI_MAX_WORDS word, địa chỉ tăng dần.
+ * hmi_read_words() đọc 1 vùng bất kỳ (vd. parameterAddr của widget) và chờ trả lời tối đa timeout_ms; mỗi lúc chỉ 1 task được đọc (khóa read_lock).
+ *
  * Hook trong task logger: chưa nhận được dữ liệu màn hình thì mỗi 5 s in số byte / khung nhận được
  * và gợi ý lỗi dây (không có byte) hay lỗi định dạng / baud (có byte nhưng không có khung đúng).
  */
@@ -36,6 +39,10 @@
 #define HMI_PAGE_POLL_MS          250
 
 static SemaphoreHandle_t lock;
+static SemaphoreHandle_t read_lock;
+static SemaphoreHandle_t read_done;
+static volatile uint16_t read_addr = 0, read_count = 0;
+static uint16_t *read_out = NULL;
 static hmi_data_t shared = { .page = -1 };
 
 static hmi_event_handler_t event_handler = NULL;
@@ -83,6 +90,52 @@ static void send_frame(uint8_t cmd, uint16_t addr, uint16_t value)
 }
 
 void hmi_write(uint16_t addr, uint16_t value) { send_frame(0x10, addr, value); }
+
+static void send_words(uint16_t addr, const uint16_t *v, int n)
+{
+    uint8_t f[8 + 2 * HMI_MAX_WORDS];
+    int len = 0;
+    f[len++] = 0x5A;
+    f[len++] = 0xA5;
+    f[len++] = (uint8_t)(1 + 2 + 2 * n + 2);
+    f[len++] = 0x10;
+    f[len++] = addr >> 8;
+    f[len++] = addr & 0xFF;
+    for (int i = 0; i < n; i++) {
+        f[len++] = v[i] >> 8;
+        f[len++] = v[i] & 0xFF;
+    }
+    uint16_t c = crc16_modbus(&f[3], len - 3);
+    f[len++] = c & 0xFF;
+    f[len++] = c >> 8;
+    uart_write_bytes(HMI_UART, (const char *)f, len);
+}
+
+void hmi_write_words(uint16_t addr, const uint16_t *v, int n)
+{
+    while (n > 0) {
+        int k = n > HMI_MAX_WORDS ? HMI_MAX_WORDS : n;
+        send_words(addr, v, k);
+        addr += k; v += k; n -= k;
+    }
+}
+
+
+bool hmi_read_words(uint16_t addr, int n, uint16_t *out, int timeout_ms)
+{
+    if (n <= 0 || n > HMI_MAX_WORDS) return false;
+    xSemaphoreTake(read_lock, portMAX_DELAY);
+    xSemaphoreTake(read_done, 0);
+    read_out = out;
+    read_addr = addr;
+    read_count = (uint16_t)n;
+    send_frame(0x03, addr, (uint16_t)n);
+    bool ok = xSemaphoreTake(read_done, pdMS_TO_TICKS(timeout_ms)) == pdTRUE;
+    read_count = 0;
+    read_out = NULL;
+    xSemaphoreGive(read_lock);
+    return ok;
+}
 void hmi_goto_page(int page) { hmi_write(ADDR_PAGE, (uint16_t)page); }
 
 hmi_data_t hmi_get(void)
@@ -128,6 +181,12 @@ static void handle_frame(const uint8_t *p, uint16_t n)
         uint16_t addr = (p[1] << 8) | p[2];
         uint16_t word_count = (p[3] << 8) | p[4];
         if (n != 5 + 2 * word_count + 2) return;
+        if (read_count && addr == read_addr && word_count == read_count && read_out) {
+            for (int i = 0; i < word_count; i++) read_out[i] = (p[5 + 2 * i] << 8) | p[6 + 2 * i];
+            read_count = 0;
+            xSemaphoreGive(read_done);
+            return;
+        }
         if (addr == ADDR_PASSWORD_KEY && word_count == 2) {
             uint16_t key  = (p[5] << 8) | p[6];
             uint16_t sismo_val = (p[7] << 8) | p[8];
@@ -260,6 +319,15 @@ static void task_hmi_poll(void *arg)
         }
         esp_task_wdt_reset();
 
+        static bool was_linked = false;
+        hmi_data_t d = hmi_get();
+        bool linked = hmi_is_linked(&d);
+        if (linked && !was_linked) {
+            send_frame(0x10, ADDR_VOLUME, HMI_VOLUME);
+            log_send("[HMI] Am luong loa = %d/16", HMI_VOLUME);
+        }
+        was_linked = linked;
+
 #if TEST_TASK_HANG
         if (ms_now() > 20000) {
             log_send("!! THU: task hmi_poll bi treo (watchdog se khoi dong lai sau %d s)", WDT_TIMEOUT_MS / 1000);
@@ -293,6 +361,8 @@ static void report_diag(void)
 void hmi_start(void)
 {
     lock = xSemaphoreCreateMutex();
+    read_lock = xSemaphoreCreateMutex();
+    read_done = xSemaphoreCreateBinary();
     logger_add_hook(report_diag);
 
     const uart_config_t cfg = {

@@ -1,0 +1,6 @@
+{    //C:/Users/nguye/Downloads/e8_plus_v1.4.0_buoc0_1 (1)/HMI_them/Wav/0000_Wav_bip.wav
+1,   //Sound channel number
+16,  //16bits every sample
+22050,//Samples number per-second
+6716//The bytes of Bin_File_Data_Size 
+};

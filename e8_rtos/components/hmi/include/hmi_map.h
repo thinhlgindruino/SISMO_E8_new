@@ -18,8 +18,19 @@
  *   0x1047          icon "E8 CM8 - Statut" (trạng thái thẻ): 0 déconnecté, 1 connecté   trang 0029
  *   0x1048          thời gian hiện trên màn hình = phút * 100 + giây (vd. 9000 = 90:00)   trang 0010
  *   0x1039          số dấu * trên trang mật khẩu (0..6)
+ *   0x1020          số phút trang Durée Exercices (0002), 1..10: nút - / + và icon vòng tròn
+ *   0x1050..0x105B  trang buổi tập Programmes 0006 / 0014 và trang bài tập con 0013: hình minh họa 1..32,
+ *                   tên bài 1..54, trục (0 = 10 phút, 1 = 2 phút), phút, giây, vòng cường độ 1..32,
+ *                   icon X (0 sáng / 1 xám), Xung, Play / Pause, nút (1 X, 2 Xung, 3 Play, 4 Stop,
+ *                   5 mũi tên, 6 <), Progress Bar, lưới bài tập con 1..10 (cùng 1 Icon, ảnh 600×921)
+ *   0x105D / 0x105E icon giữ ảnh biểu đồ (không ghi) / icon cố định (luôn 0: dấu ":" và nút Stop)
+ *   0x2020 / 0x2030 parameterAddr Progress Bar trang 0006 / 0014
+ *   0x700A          phát file WAV thứ N trong WavBin (1 = tiếng bíp)
+ *   0x700B          âm lượng loa 0..16
  *
- * Trang: 0000 khởi động, 0001 menu chính, 0010 buổi tập Manuel, 0026 mật khẩu,
+ * Trang: 0000 khởi động, 0001 menu chính, 0002 Durée Exercices (chọn 1..10 phút), 0010 buổi tập
+ * Manuel, 0011 buổi tập Durée, 0003..0006 / 0013 / 0014 / 0021..0025 Programmes, 0009 / 0012 / 0015..0020
+ * trống (không widget), 0026 mật khẩu,
  * 0027 cài đặt WiFi (74700), 0028 MODE WIFI / LOCAL (74710), 0029 thẻ + ngôn ngữ (74766),
  * 0030 Mode / Timer / Ratio / Manual (200816).
  */
@@ -38,6 +49,13 @@
 #define PAGE_ACCESS               29
 #define PAGE_FACTORY              30
 #define PAGE_MANUEL               10
+#define PAGE_DUREE                2
+#define PAGE_DUREE_SESSION        11
+#define PAGE_LEVEL                5
+#define PAGE_PROGRAM_X            6
+#define PAGE_EXERCISES            13
+#define PAGE_PROGRAM              14
+#define PAGE_PROPRIO              25
 
 #define ADDR_VAR_BASE             0x1000
 #define HMI_VAR_COUNT             10
@@ -71,6 +89,30 @@
 #define ADDR_ACCESS_ICON          0x1046
 #define ADDR_CM8_STATUS_ICON      0x1047
 #define ADDR_TIME_DISPLAY         0x1048
+#define ADDR_DURATION_MIN         0x1020
+#define ADDR_PROG_ILLUS           0x1050
+#define ADDR_PROG_TITLE           0x1051
+#define ADDR_PROG_AXIS            0x1052
+#define ADDR_PROG_MIN             0x1053
+#define ADDR_PROG_SEC             0x1054
+#define ADDR_PROG_LEVEL           0x1055
+#define ADDR_PROG_X_ICON          0x1056
+#define ADDR_PROG_PULSE_ICON      0x1057
+#define ADDR_PROG_PLAY_ICON       0x1058
+#define ADDR_PROG_BUTTON          0x1059
+#define ADDR_PROG_PROGRESS        0x105A
+#define ADDR_PROG_GRID            0x105B
+#define ADDR_PROG_PARAM_X         0x2020
+#define ADDR_PROG_PARAM           0x2030
+#define PROG_BTN_X                1
+#define PROG_BTN_PULSE            2
+#define PROG_BTN_PLAY             3
+#define PROG_BTN_STOP             4
+#define PROG_BTN_ARROW            5
+#define PROG_BTN_BACK             6
+#define ADDR_WAV                  0x700A
+#define ADDR_VOLUME               0x700B
+#define WAV_BEEP                  1
 
 #define KEY_CLEAR                 10
 #define KEY_EMPTY                 0xFFFF

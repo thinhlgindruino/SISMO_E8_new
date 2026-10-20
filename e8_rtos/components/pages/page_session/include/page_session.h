@@ -4,6 +4,8 @@
  * Task "session" (ưu tiên cao nhất, chu kỳ 50 ms):
  *   lấy bản sao dữ liệu màn hình + trạng thái CM8 -> quyết định lệnh gửi CM8,
  *   cường độ / Xung trên đồng hồ, xử lý lỗi / mất kết nối (bắt màn hình tạm dừng).
+ * Trang Programmes 0006 / 0014: task program gọi page_session_program(chạy, mức 0..32) mỗi chu kỳ;
+ * khi an toàn / thẻ / mạng / CM8 bắt dừng thì page_session_program_take_pause() trả về true một lần.
  * Kèm hook in tiến trình buổi tập (bắt đầu / tạm dừng / còn lại / cường độ) trong task logger.
  *
  * Trạng thái động cơ (session_motor_t):
@@ -36,3 +38,5 @@ void             page_session_start(void);
 bool             page_session_on_event(const hmi_event_t *e);
 session_status_t page_session_get_status(void);
 const char      *session_motor_name(session_motor_t m);
+void             page_session_program(bool run, int level);
+bool             page_session_program_take_pause(void);

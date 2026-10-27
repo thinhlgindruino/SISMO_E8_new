@@ -59,7 +59,7 @@
 
 #define WDT_TIMEOUT_MS            3000
 
-#define DEBUG_TASK_STATS          1
+#define DEBUG_TASK_STATS          0
 #define DEBUG_SISMO_EVENTS        0
 #define DEBUG_INTENSITY           0
 #define DEBUG_UNHANDLED_EVENTS    0

@@ -124,9 +124,8 @@ int net_get_rssi(void)
 void net_get_info(char *ssid, size_t n_ssid, char *ip, size_t n_ip)
 {
     portENTER_CRITICAL(&lock);
-    bool lan = eth_has_ip;
-    if (ssid) snprintf(ssid, n_ssid, "%s", lan ? "LAN" : saved_ssid);
-    if (ip)   snprintf(ip, n_ip, "%s", config_active ? NET_AP_IP : lan ? ip_eth : ip_sta);
+    if (ssid) snprintf(ssid, n_ssid, "%s", saved_ssid);
+    if (ip)   snprintf(ip, n_ip, "%s", eth_has_ip ? ip_eth : ip_sta);
     portEXIT_CRITICAL(&lock);
 }
 
@@ -337,9 +336,9 @@ static void on_event(void *arg, esp_event_base_t base, int32_t id, void *data)
 static void eth_wait_log(void *arg)
 {
     (void)arg;
-    if (!eth_link_up || eth_has_ip) return;
-    ESP_LOGW(TAG, "LAN: co day nhung chua co IP sau %lld s (DHCP khong tra loi)",
-             (long long)(esp_timer_get_time() / 1000 - eth_link_ms) / 1000);
+    int64_t waited = esp_timer_get_time() / 1000 - eth_link_ms;
+    if (!eth_link_up || eth_has_ip || waited < NET_ETH_WAIT_LOG_MS / 2) return;
+    ESP_LOGW(TAG, "LAN: co day nhung chua co IP sau %lld s (DHCP khong tra loi)", (long long)waited / 1000);
 }
 
 static void eth_start(void)

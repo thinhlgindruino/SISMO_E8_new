@@ -16,3 +16,5 @@ CONFIG_HTTPD_MAX_URI_LEN=512
 CONFIG_LWIP_TCPIP_TASK_AFFINITY_CPU0=y
 # OTA: firmware moi chua duoc xac nhan ma bi reset (crash, watchdog, mat dien) -> bootloader quay ve ban cu
 CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y
+CONFIG_MQTT_USE_CUSTOM_CONFIG=y
+CONFIG_MQTT_POLL_READ_TIMEOUT_MS=100

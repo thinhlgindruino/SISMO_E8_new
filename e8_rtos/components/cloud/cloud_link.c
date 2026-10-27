@@ -5,11 +5,17 @@
  *   khoảng 1,5 x keepalive. Bộ đệm LINK_BUFFER_SIZE đủ chứa 1 khúc firmware 4 KB + topic.
  * - Tin dài hơn bộ đệm bị esp-mqtt chia nhiều sự kiện DATA -> ghép lại đủ rồi mới báo LINK_EV_MESSAGE.
  * - Server từ chối (CONNACK 4 / 5) -> báo LINK_EV_REFUSED; cloud.c tự đóng kết nối và đổi cách đăng nhập.
- * - Gửi bằng esp_mqtt_client_enqueue (không chờ mạng); task MQTT của esp-mqtt chạy core 0.
+ * - Gửi bằng esp_mqtt_client_enqueue (không chờ mạng); task MQTT của esp-mqtt chạy core 0. Tin trong hàng đợi đi sau tối đa
+ *   CONFIG_MQTT_POLL_READ_TIMEOUT_MS (sdkconfig: 100 ms, mặc định 1000 ms làm OTA chậm ~1 s / khúc).
+ * - Dừng client (link_close) và subscribe có thể phải chờ task esp-mqtt vài giây (đang chờ thử lại / đang mở kết nối
+ *   tới 10 s) -> task gọi tạm rời watchdog trong lúc chờ rồi đăng ký lại, không bị watchdog reset máy.
+ * - Log lỗi kết nối của esp-mqtt / esp-tls / transport (dòng đỏ mỗi lần rớt mạng hoặc thử lại) bị tắt; cloud.c tự in
+ *   1 dòng [CLOUD] dễ hiểu cho mỗi lần mất / có lại kết nối.
  */
 #include <string.h>
 #include <stdlib.h>
 #include "esp_log.h"
+#include "esp_task_wdt.h"
 #include "mqtt_client.h"
 #include "cloud_link.h"
 
@@ -20,6 +26,18 @@ static link_callback_t callback = NULL;
 static char cur_topic[LINK_TOPIC_MAX];
 static uint8_t *join_buf = NULL;
 static int join_total = 0;
+
+static bool wdt_pause(void)
+{
+    if (esp_task_wdt_status(NULL) != ESP_OK) return false;
+    esp_task_wdt_delete(NULL);
+    return true;
+}
+
+static void wdt_resume(bool paused)
+{
+    if (paused) esp_task_wdt_add(NULL);
+}
 
 static void emit(link_event_type_t type, int code, const char *topic, const uint8_t *data, int len)
 {
@@ -78,6 +96,10 @@ static void handler(void *arg, esp_event_base_t base, int32_t id, void *data)
 
 bool link_open(const char *host, int port, const char *username, const char *client_id, link_callback_t cb)
 {
+    esp_log_level_set("mqtt_client", ESP_LOG_NONE);
+    esp_log_level_set("transport_base", ESP_LOG_NONE);
+    esp_log_level_set("transport", ESP_LOG_NONE);
+    esp_log_level_set("esp-tls", ESP_LOG_NONE);
     link_close();
     callback = cb;
     esp_mqtt_client_config_t c = {
@@ -107,8 +129,10 @@ bool link_open(const char *host, int port, const char *username, const char *cli
 void link_close(void)
 {
     if (!client) return;
+    bool paused = wdt_pause();
     esp_mqtt_client_stop(client);
     esp_mqtt_client_destroy(client);
+    wdt_resume(paused);
     client = NULL;
     free(join_buf);
     join_buf = NULL;
@@ -123,5 +147,8 @@ bool link_publish(const char *topic, const void *data, int len, int qos)
 bool link_subscribe(const char *topic, int qos)
 {
     if (!client) return false;
-    return esp_mqtt_client_subscribe_single(client, topic, qos) >= 0;
+    bool paused = wdt_pause();
+    bool ok = esp_mqtt_client_subscribe_single(client, topic, qos) >= 0;
+    wdt_resume(paused);
+    return ok;
 }

@@ -11,7 +11,7 @@
  * Gửi lên server:
  *   client attributes  model, firmware, device_name, mac, ip, ssid, network (WiFi / LAN), cài đặt (access_mode, motor_mode, card_timer,
  *                      language, motor_ratio, control_mode, manual_minutes), remote_lock, sessions_total
- *                      -> lúc kết nối và mỗi khi cài đặt đổi (trên màn hình hay từ xa)
+ *                      -> lúc kết nối, mỗi khi cài đặt đổi (trên màn hình hay từ xa) và khi đổi mạng / IP
  *   telemetry status   state (IDLE / COUNTDOWN / RUN / PAUSE), kind (manual / duree / programme), remaining_s,
  *                      intensity, program, level, page, cm8, card, fault (0 / 2 / 3 / 4 = ERR.0x), rssi, uptime_s,
  *                      heap -> khi đổi (tối đa 1 lần / s; thời gian còn lại 5 s / lần) và CLOUD_HEARTBEAT_MS một lần

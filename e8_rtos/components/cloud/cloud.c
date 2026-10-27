@@ -12,6 +12,7 @@
  *   0x1001 (Play / Pause) hoặc làm như nút Stop của trang (0x1000 = 0, 0x1001 = 0, về trang trước).
  * - cloud.json (SPIFFS): sessions_total, gói OTA đang chờ khởi động lại (ota_target / ota_checksum), gói OTA đã
  *   lỗi (failed_checksum) để không tải lại mãi.
+ * - Đổi mạng (LAN <-> WiFi, đổi IP) khi chưa ONLINE -> kết nối lại ngay, không chờ esp-mqtt hết hạn thử lại.
  * - OTA: mỗi khúc chờ trả lời FW_CHUNK_TIMEOUT_MS, gửi lại tối đa FW_CHUNK_TRIES lần; mất kết nối giữa chừng
  *   -> kết nối lại thì xin tiếp khúc đang dở.
  */
@@ -117,6 +118,7 @@ static status_t   last_status;
 static bool       status_valid = false;
 static int64_t    last_status_ms = 0;
 static settings_t last_settings;
+static char       last_net[24] = "";
 static bool       settings_valid = false;
 static int        manual_page = -1, manual_start_s = 0;
 static int        prev_error = 0;
@@ -345,6 +347,7 @@ static void publish_attributes(void)
     add_settings(j, &s);
     cJSON_AddNumberToObject(j, "sessions_total", sessions_total);
     send_json(T_ATTR, j, 1);
+    snprintf(last_net, sizeof(last_net), "%s %s", net_link_name(net_get_link()), ip);
     last_settings = s;
     settings_valid = true;
 }
@@ -873,7 +876,10 @@ static void handle_link_event(const queued_event_t *q)
         }
         break;
     case LINK_EV_DISCONNECTED:
-        if (s == CLOUD_ONLINE) set_state(CLOUD_CONNECTING);
+        if (s == CLOUD_ONLINE) {
+            log_send("   [CLOUD] Mat ket noi server -> tu ket noi lai");
+            set_state(CLOUD_CONNECTING);
+        }
         break;
     case LINK_EV_REFUSED:
         link_close();
@@ -920,7 +926,18 @@ static void connection_tick(void)
         if (s != CLOUD_WAIT_NETWORK) { link_close(); set_state(CLOUD_WAIT_NETWORK); }
         return;
     }
+    static char prev_net[24] = "";
+    char ip[16] = "", net[24];
+    net_get_info(NULL, 0, ip, sizeof(ip));
+    snprintf(net, sizeof(net), "%s %s", net_link_name(net_get_link()), ip);
+    bool net_changed = strcmp(net, prev_net) != 0;
+    snprintf(prev_net, sizeof(prev_net), "%s", net);
     if (s == CLOUD_OFF || s == CLOUD_WAIT_NETWORK) open_with_token();
+    else if (net_changed && (s == CLOUD_CONNECTING || s == CLOUD_RETRY_LATER)) {
+        log_send("   [CLOUD] Doi mang (%s) -> ket noi lai ngay", net);
+        provisioned_once = false;
+        open_with_token();
+    }
     else if (s == CLOUD_PROVISIONING && now - state_since >= PROVISION_TIMEOUT_MS) {
         link_close();
         log_send("   [CLOUD] Dang ky khong tra loi -> thu lai sau %d s", RETRY_LATER_MS / 1000);
@@ -968,7 +985,10 @@ static void task_cloud(void *arg)
         else if (gap >= CLOUD_HEARTBEAT_MS) publish_status(&s);
         settings_t st;
         read_settings(&st);
-        if (!settings_valid || settings_changed(&st, &last_settings)) publish_attributes();
+        char ip[16] = "", net[24];
+        net_get_info(NULL, 0, ip, sizeof(ip));
+        snprintf(net, sizeof(net), "%s %s", net_link_name(net_get_link()), ip);
+        if (!settings_valid || settings_changed(&st, &last_settings) || strcmp(net, last_net) != 0) publish_attributes();
         fw_tick(&s);
     }
 }

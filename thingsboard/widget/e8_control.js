@@ -142,6 +142,7 @@ self.onInit = function () {
                                    (st.v.program ? ' · ' + st.v.program : ''));
         var fault = num('fault', 0);
         if (on && fault) sub.push('ERR.0' + fault);
+        if (on && locked) sub.push('Commande à distance verrouillée');
         el.sub.textContent = sub.join(' · ');
         el.online.className = 'e8w-dot e8w-online' + (on ? (fault ? ' bad' : ' on') : '');
         var blocked = !on || locked || st.sending;

@@ -7,7 +7,7 @@
  *   viết hoa), mật khẩu NET_AP_PASSWORD, IP 192.168.10.100. Vào http://192.168.10.100 -> nhập SSID
  *   + mật khẩu -> Submit -> lưu wifi.json -> tắt AP -> ESP32 khởi động lại (màn hình về trang 0)
  *   -> vào WiFi vừa lưu. Đang ONLINE mà bật cấu hình thì vẫn giữ kết nối; tắt cấu hình là về lại ONLINE.
- * - net_get_info(): khi đang dùng LAN thì ssid = "LAN", ip = IP của LAN.
+ * - net_get_info(): ssid = WiFi đã lưu, ip = IP của mạng đang dùng (LAN nếu có, không thì WiFi; không phải IP AP cấu hình).
  * - net_mac_text(): MAC WiFi dạng "AA:BB:CC:DD:EE:FF"; net_get_rssi(): cường độ sóng WiFi (dBm, 0 = chưa kết nối).
  * - net_set_before_restart_hook(): hàm được gọi ngay trước khi khởi động lại sau Submit / OTA
  *   (page_setting dùng để đưa màn hình về trang 0).

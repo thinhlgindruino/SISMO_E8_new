@@ -2,7 +2,8 @@
  * motor_modbus.h - ESP32 làm Modbus RTU MASTER điều khiển mạch CM8 (task "motor")
  *
  * Nối dây: UART1 9600 baud qua module SP3232 (RS-232):
- *   GPIO32 (TX) -> SP3232 RXD, GPIO33 (RX) <- SP3232 TXD, GND chung. CM8 là slave ID 1.
+ *   GPIO32 (TX, chân CFG trên WT32-ETH01) -> SP3232 RXD, GPIO33 (RX, chân 485_EN) <- SP3232 TXD, GND chung;
+ *   SP3232 cấp 3.3V (chân 3V3 của board). CM8 là slave ID 1.
  *
  * Viết lại theo ý tưởng file control_motor.cpp (Arduino) anh hướng dẫn gửi:
  *   - Liên tục GHI khối thanh ghi 0..14 (FC16): lệnh, giới hạn dòng, tốc độ, mode, ratio

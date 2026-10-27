@@ -10,6 +10,7 @@
  *   setting  3   Sismo, mật khẩu, trang cài đặt (bật AP + web chạy trong task này -> stack 5120)
  *   program  3   Programmes: chọn mức độ, trang buổi tập, bài tập con
  *   logger   2   in log (thấp nhất để không làm chậm điều khiển)
+ *   cloud    3   ThingsBoard (MQTT, RPC, OTA) - chạy core 0 cùng WiFi, không chung core với task điều khiển
  *
  * WDT_TIMEOUT_MS: task nào không báo "còn sống" quá 3 s -> ESP32 khởi động lại.
  *
@@ -32,6 +33,7 @@
  *   cường độ / Xung / CM8  -> components/pages/page_session/page_session.c
  *   mật khẩu, giữ Sismo    -> components/pages/page_setting/page_setting.c
  *   WiFi AP / web          -> components/network/include/network.h
+ *   ThingsBoard            -> components/cloud/include/cloud.h
  */
 #pragma once
 
@@ -42,6 +44,7 @@
 #define PRIO_SETTING              3
 #define PRIO_PROGRAM              3
 #define PRIO_LOGGER               2
+#define PRIO_CLOUD                3
 
 #define STACK_SESSION             4096
 #define STACK_MOTOR               4096
@@ -49,8 +52,10 @@
 #define STACK_SETTING             5120
 #define STACK_PROGRAM             4096
 #define STACK_LOGGER              4096
+#define STACK_CLOUD               6144
 
 #define APP_CORE                  1
+#define NET_CORE                  0
 
 #define WDT_TIMEOUT_MS            3000
 
@@ -61,4 +66,4 @@
 #define TEST_TASK_HANG            0
 #define STARTUP_REQUIRE_CM8       1
 #define DEBUG_FAKE_CM8_ERROR      0
-#define DEBUG_FAKE_CM8_ERROR_AFTER_MS 0
+#define DEBUG_FAKE_CM8_ERROR_AFTER_MS 60000

@@ -1,0 +1,52 @@
+.e8w { position: relative; width: 100%; height: 100%; overflow: auto; background: #0e111a; color: #fff;
+  font-family: "Times New Roman", Times, serif; box-sizing: border-box; }
+.e8w *, .e8w *::before, .e8w *::after { box-sizing: border-box; }
+.e8w-main { max-width: 420px; margin: 0 auto; padding: 14px 16px 18px; display: flex; flex-direction: column; align-items: center; }
+.e8w-logo { width: 220px; max-width: 70%; height: auto; display: block; }
+.e8w-name { margin-top: 18px; font-size: 19px; letter-spacing: .3px; text-align: center; word-break: break-all; }
+.e8w-time { margin-top: 6px; font-size: 19px; font-variant-numeric: tabular-nums; }
+.e8w-sub { min-height: 18px; margin-top: 2px; font-size: 14px; color: #aab1c3; text-align: center; }
+.e8w-dot { width: 34px; height: 34px; border-radius: 50%; background: #5b6070; flex: none; }
+.e8w-dot.on { background: #26e03d; }
+.e8w-dot.wait { background: #ff9f1a; }
+.e8w-dot.bad { background: #ff3b3b; }
+.e8w-online { margin: 12px 0 30px; width: 38px; height: 38px; }
+.e8w-buttons { display: grid; grid-template-columns: repeat(3, 76px); gap: 20px 34px; justify-content: center; }
+.e8w-btn { height: 48px; border: 0; border-radius: 6px; background: #c9c9c9; box-shadow: 0 5px 0 #8f8f8f; cursor: pointer;
+  display: flex; align-items: center; justify-content: center; padding: 0; transition: transform .05s; }
+.e8w-btn svg { width: 30px; height: 30px; fill: #fff; }
+.e8w-btn.active { background: #e0338f; box-shadow: 0 5px 0 #9c1d62; }
+.e8w-btn.e8w-user { background: #2f8fe0; box-shadow: 0 5px 0 #1d5f99; }
+.e8w-btn:active:not(:disabled) { transform: translateY(3px); box-shadow: 0 2px 0 #8f8f8f; }
+.e8w-btn:disabled { opacity: .45; cursor: default; }
+.e8w-rows { width: 100%; margin-top: 34px; display: flex; flex-direction: column; gap: 14px; }
+.e8w-row { display: flex; align-items: center; gap: 10px; justify-content: center; cursor: pointer; user-select: none; }
+.e8w-row.disabled { cursor: default; opacity: .55; }
+.e8w-pill { flex: 1; max-width: 245px; height: 48px; border: 1.5px solid #fff; border-radius: 24px; display: flex;
+  align-items: center; justify-content: center; font-size: 19px; }
+.e8w-row .e8w-dot { width: 32px; height: 32px; }
+.e8w-ok { margin-top: 18px; width: 86px; height: 48px; border: 1.5px solid #fff; border-radius: 24px; background: transparent;
+  color: #fff; font: inherit; font-size: 19px; cursor: pointer; }
+.e8w-ok:disabled { opacity: .45; cursor: default; }
+.e8w-msg { min-height: 20px; margin-top: 10px; font-size: 14px; color: #ffcf66; text-align: center; }
+.e8w-panel { display: none; position: absolute; inset: 0; background: #0e111a; padding: 14px 18px 18px; overflow: auto; }
+.e8w.show-panel .e8w-panel { display: block; }
+.e8w.show-panel .e8w-main { visibility: hidden; }
+.e8w-panel-head { display: flex; align-items: center; justify-content: space-between; font-size: 20px; margin-bottom: 8px; padding-right: 26px; }
+.e8w-close { background: transparent; border: 0; color: #fff; font-size: 30px; line-height: 1; cursor: pointer; }
+.e8w-panel label { display: block; margin: 10px 0 4px; font-size: 14px; color: #aab1c3; }
+.e8w-fw-select { flex: 1; min-width: 0; }
+.e8w-in, .e8w-fw-select { width: 100%; background: #1b2030; color: #fff; border: 1px solid #3a4157; border-radius: 6px;
+  padding: 7px 9px; font: inherit; font-size: 16px; }
+textarea.e8w-in { resize: vertical; font-family: inherit; }
+.e8w-save, .e8w-fw-go, .e8w-ok, .e8w-in, .e8w-fw-select { font-family: inherit; }
+.e8w-save, .e8w-fw-go { margin-top: 10px; background: #e0338f; color: #fff; border: 0; border-radius: 18px; padding: 8px 18px;
+  font: inherit; font-size: 15px; cursor: pointer; white-space: nowrap; }
+.e8w-save:disabled, .e8w-fw-go:disabled { opacity: .45; cursor: default; }
+.e8w-info { width: 100%; margin-top: 16px; border-collapse: collapse; font-size: 15px; font-family: inherit; color: #fff; }
+.e8w-info td { font-family: "Times New Roman", Times, serif !important; padding: 4px 0; border-bottom: 1px solid #23283a; vertical-align: top; }
+.e8w-info td:first-child { color: #aab1c3; width: 42%; padding-right: 8px; }
+.e8w-fw { margin-top: 14px; }
+.e8w-fw-line { display: flex; gap: 8px; align-items: center; }
+.e8w-fw-line .e8w-fw-go { margin-top: 0; }
+.e8w-fw-state { margin-top: 6px; font-size: 14px; color: #aab1c3; min-height: 18px; }

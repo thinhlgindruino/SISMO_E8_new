@@ -1,0 +1,612 @@
+{
+  "title": "E8+ Sismo",
+  "name": "E8+ Sismo",
+  "image": null,
+  "mobileHide": false,
+  "mobileOrder": null,
+  "configuration": {
+    "description": "Sismo Fitness E8+",
+    "widgets": {
+      "a8129149-6f24-48c3-b83a-6791924e5f8b": {
+        "type": "latest",
+        "sizeX": 24,
+        "sizeY": 10,
+        "typeFullFqn": "system.cards.entities_table",
+        "config": {
+          "datasources": [
+            {
+              "type": "entity",
+              "entityAliasId": "f09e5dd6-da5e-40cb-aadb-e1fa9e7dc4ca",
+              "dataKeys": [
+                {
+                  "name": "active",
+                  "type": "attribute",
+                  "label": "En ligne",
+                  "color": "#2196f3",
+                  "settings": {
+                    "useCellContentFunction": true,
+                    "useCellStyleFunction": true,
+                    "columnWidth": "60px",
+                    "cellContentFunction": "return '&#11044;';",
+                    "cellStyleFunction": "return {color: value === 'true' || value === true ? '#26b33a' : '#b0b0b0', fontSize: '18px'};"
+                  },
+                  "_hash": 0.5
+                },
+                {
+                  "name": "customer_name",
+                  "type": "attribute",
+                  "label": "Client",
+                  "color": "#2196f3",
+                  "settings": {},
+                  "_hash": 0.5
+                },
+                {
+                  "name": "firmware",
+                  "type": "attribute",
+                  "label": "Firmware",
+                  "color": "#2196f3",
+                  "settings": {},
+                  "_hash": 0.5
+                },
+                {
+                  "name": "state",
+                  "type": "timeseries",
+                  "label": "État",
+                  "color": "#2196f3",
+                  "settings": {},
+                  "_hash": 0.5
+                },
+                {
+                  "name": "program",
+                  "type": "timeseries",
+                  "label": "Programme",
+                  "color": "#2196f3",
+                  "settings": {},
+                  "_hash": 0.5
+                },
+                {
+                  "name": "fault",
+                  "type": "timeseries",
+                  "label": "Défaut",
+                  "color": "#2196f3",
+                  "settings": {
+                    "useCellContentFunction": true,
+                    "cellContentFunction": "return value && value != '0' ? '<span style=\"color:#d32f2f\">ERR.0' + value + '</span>' : 'OK';"
+                  },
+                  "_hash": 0.5
+                },
+                {
+                  "name": "sessions_total",
+                  "type": "attribute",
+                  "label": "Séances",
+                  "color": "#2196f3",
+                  "settings": {},
+                  "_hash": 0.5
+                },
+                {
+                  "name": "customer_notes",
+                  "type": "attribute",
+                  "label": "Notes",
+                  "color": "#2196f3",
+                  "settings": {},
+                  "_hash": 0.5
+                }
+              ]
+            }
+          ],
+          "timewindow": {
+            "realtime": {
+              "timewindowMs": 86400000
+            }
+          },
+          "showTitle": true,
+          "title": "Machines E8+",
+          "backgroundColor": "#ffffff",
+          "color": "rgba(0,0,0,0.87)",
+          "padding": "4px",
+          "settings": {
+            "enableSearch": true,
+            "displayPagination": true,
+            "defaultPageSize": 20,
+            "defaultSortOrder": "entityName",
+            "displayEntityName": true,
+            "entityNameColumnTitle": "Machine",
+            "displayEntityLabel": false,
+            "displayEntityType": false,
+            "entitiesTitle": "Machines E8+",
+            "enableSelectColumnDisplay": true
+          },
+          "dropShadow": true,
+          "enableFullscreen": true,
+          "titleStyle": {
+            "fontSize": "16px",
+            "fontWeight": 400
+          },
+          "useDashboardTimewindow": false,
+          "showLegend": false,
+          "actions": {
+            "rowClick": [
+              {
+                "id": "60f92b01-a21b-4812-b1d9-8b5113ee09b9",
+                "name": "Ouvrir",
+                "icon": "more_horiz",
+                "type": "openDashboardState",
+                "targetDashboardStateId": "machine",
+                "setEntityId": true,
+                "stateEntityParamName": null
+              }
+            ]
+          },
+          "widgetStyle": {}
+        },
+        "id": "a8129149-6f24-48c3-b83a-6791924e5f8b"
+      },
+      "efc26af2-a9a2-4ca9-9e4c-8ef3f3eadc29": {
+        "type": "latest",
+        "sizeX": 7,
+        "sizeY": 19,
+        "typeFullFqn": "tenant.e8plus_control",
+        "config": {
+          "datasources": [
+            {
+              "type": "entity",
+              "entityAliasId": "171b7303-c0c7-4551-96e4-fd9c12dc46da",
+              "dataKeys": [
+                {
+                  "name": "firmware",
+                  "type": "attribute",
+                  "label": "firmware",
+                  "color": "#2196f3",
+                  "settings": {},
+                  "_hash": 0.5
+                },
+                {
+                  "name": "access_mode",
+                  "type": "attribute",
+                  "label": "access_mode",
+                  "color": "#2196f3",
+                  "settings": {},
+                  "_hash": 0.5
+                },
+                {
+                  "name": "motor_mode",
+                  "type": "attribute",
+                  "label": "motor_mode",
+                  "color": "#2196f3",
+                  "settings": {},
+                  "_hash": 0.5
+                },
+                {
+                  "name": "card_timer",
+                  "type": "attribute",
+                  "label": "card_timer",
+                  "color": "#2196f3",
+                  "settings": {},
+                  "_hash": 0.5
+                },
+                {
+                  "name": "language",
+                  "type": "attribute",
+                  "label": "language",
+                  "color": "#2196f3",
+                  "settings": {},
+                  "_hash": 0.5
+                },
+                {
+                  "name": "motor_ratio",
+                  "type": "attribute",
+                  "label": "motor_ratio",
+                  "color": "#2196f3",
+                  "settings": {},
+                  "_hash": 0.5
+                },
+                {
+                  "name": "remote_lock",
+                  "type": "attribute",
+                  "label": "remote_lock",
+                  "color": "#2196f3",
+                  "settings": {},
+                  "_hash": 0.5
+                },
+                {
+                  "name": "sessions_total",
+                  "type": "attribute",
+                  "label": "sessions_total",
+                  "color": "#2196f3",
+                  "settings": {},
+                  "_hash": 0.5
+                },
+                {
+                  "name": "mac",
+                  "type": "attribute",
+                  "label": "mac",
+                  "color": "#2196f3",
+                  "settings": {},
+                  "_hash": 0.5
+                },
+                {
+                  "name": "ip",
+                  "type": "attribute",
+                  "label": "ip",
+                  "color": "#2196f3",
+                  "settings": {},
+                  "_hash": 0.5
+                },
+                {
+                  "name": "ssid",
+                  "type": "attribute",
+                  "label": "ssid",
+                  "color": "#2196f3",
+                  "settings": {},
+                  "_hash": 0.5
+                },
+                {
+                  "name": "active",
+                  "type": "attribute",
+                  "label": "active",
+                  "color": "#2196f3",
+                  "settings": {},
+                  "_hash": 0.5
+                },
+                {
+                  "name": "lastConnectTime",
+                  "type": "attribute",
+                  "label": "lastConnectTime",
+                  "color": "#2196f3",
+                  "settings": {},
+                  "_hash": 0.5
+                },
+                {
+                  "name": "lastDisconnectTime",
+                  "type": "attribute",
+                  "label": "lastDisconnectTime",
+                  "color": "#2196f3",
+                  "settings": {},
+                  "_hash": 0.5
+                },
+                {
+                  "name": "customer_name",
+                  "type": "attribute",
+                  "label": "customer_name",
+                  "color": "#2196f3",
+                  "settings": {},
+                  "_hash": 0.5
+                },
+                {
+                  "name": "customer_info",
+                  "type": "attribute",
+                  "label": "customer_info",
+                  "color": "#2196f3",
+                  "settings": {},
+                  "_hash": 0.5
+                },
+                {
+                  "name": "customer_notes",
+                  "type": "attribute",
+                  "label": "customer_notes",
+                  "color": "#2196f3",
+                  "settings": {},
+                  "_hash": 0.5
+                },
+                {
+                  "name": "state",
+                  "type": "timeseries",
+                  "label": "state",
+                  "color": "#2196f3",
+                  "settings": {},
+                  "_hash": 0.5
+                },
+                {
+                  "name": "kind",
+                  "type": "timeseries",
+                  "label": "kind",
+                  "color": "#2196f3",
+                  "settings": {},
+                  "_hash": 0.5
+                },
+                {
+                  "name": "remaining_s",
+                  "type": "timeseries",
+                  "label": "remaining_s",
+                  "color": "#2196f3",
+                  "settings": {},
+                  "_hash": 0.5
+                },
+                {
+                  "name": "planned_s",
+                  "type": "timeseries",
+                  "label": "planned_s",
+                  "color": "#2196f3",
+                  "settings": {},
+                  "_hash": 0.5
+                },
+                {
+                  "name": "program",
+                  "type": "timeseries",
+                  "label": "program",
+                  "color": "#2196f3",
+                  "settings": {},
+                  "_hash": 0.5
+                },
+                {
+                  "name": "fault",
+                  "type": "timeseries",
+                  "label": "fault",
+                  "color": "#2196f3",
+                  "settings": {},
+                  "_hash": 0.5
+                },
+                {
+                  "name": "rssi",
+                  "type": "timeseries",
+                  "label": "rssi",
+                  "color": "#2196f3",
+                  "settings": {},
+                  "_hash": 0.5
+                },
+                {
+                  "name": "fw_state",
+                  "type": "timeseries",
+                  "label": "fw_state",
+                  "color": "#2196f3",
+                  "settings": {},
+                  "_hash": 0.5
+                },
+                {
+                  "name": "fw_progress",
+                  "type": "timeseries",
+                  "label": "fw_progress",
+                  "color": "#2196f3",
+                  "settings": {},
+                  "_hash": 0.5
+                },
+                {
+                  "name": "fw_error",
+                  "type": "timeseries",
+                  "label": "fw_error",
+                  "color": "#2196f3",
+                  "settings": {},
+                  "_hash": 0.5
+                }
+              ]
+            }
+          ],
+          "timewindow": {
+            "realtime": {
+              "timewindowMs": 86400000
+            }
+          },
+          "showTitle": false,
+          "title": "E8+",
+          "backgroundColor": "#0e111a",
+          "color": "#ffffff",
+          "padding": "0px",
+          "settings": {},
+          "dropShadow": true,
+          "enableFullscreen": false,
+          "titleStyle": {
+            "fontSize": "16px",
+            "fontWeight": 400
+          },
+          "useDashboardTimewindow": false,
+          "showLegend": false,
+          "actions": {},
+          "widgetStyle": {}
+        },
+        "id": "efc26af2-a9a2-4ca9-9e4c-8ef3f3eadc29"
+      },
+      "0753b316-156a-4990-9ab8-0772cc38a0ad": {
+        "type": "timeseries",
+        "sizeX": 17,
+        "sizeY": 19,
+        "typeFullFqn": "system.cards.timeseries_table",
+        "config": {
+          "datasources": [
+            {
+              "type": "entity",
+              "entityAliasId": "171b7303-c0c7-4551-96e4-fd9c12dc46da",
+              "dataKeys": [
+                {
+                  "name": "event",
+                  "type": "timeseries",
+                  "label": "Événement",
+                  "color": "#2196f3",
+                  "settings": {},
+                  "_hash": 0.5
+                },
+                {
+                  "name": "session_kind",
+                  "type": "timeseries",
+                  "label": "Type",
+                  "color": "#2196f3",
+                  "settings": {},
+                  "_hash": 0.5
+                },
+                {
+                  "name": "session_program",
+                  "type": "timeseries",
+                  "label": "Programme",
+                  "color": "#2196f3",
+                  "settings": {},
+                  "_hash": 0.5
+                },
+                {
+                  "name": "session_level",
+                  "type": "timeseries",
+                  "label": "Niveau",
+                  "color": "#2196f3",
+                  "settings": {},
+                  "_hash": 0.5
+                },
+                {
+                  "name": "session_done_s",
+                  "type": "timeseries",
+                  "label": "Durée (s)",
+                  "color": "#2196f3",
+                  "settings": {},
+                  "_hash": 0.5
+                },
+                {
+                  "name": "error_code",
+                  "type": "timeseries",
+                  "label": "Erreur",
+                  "color": "#2196f3",
+                  "settings": {},
+                  "_hash": 0.5
+                },
+                {
+                  "name": "fw_state",
+                  "type": "timeseries",
+                  "label": "Firmware",
+                  "color": "#2196f3",
+                  "settings": {},
+                  "_hash": 0.5
+                }
+              ]
+            }
+          ],
+          "timewindow": {
+            "realtime": {
+              "timewindowMs": 604800000
+            },
+            "aggregation": {
+              "type": "NONE",
+              "limit": 500
+            }
+          },
+          "showTitle": true,
+          "title": "Historique (7 jours)",
+          "backgroundColor": "#ffffff",
+          "color": "rgba(0,0,0,0.87)",
+          "padding": "4px",
+          "settings": {
+            "showTimestamp": true,
+            "displayPagination": true,
+            "defaultPageSize": 15,
+            "enableSearch": true,
+            "hideEmptyLines": true,
+            "showMilliseconds": false
+          },
+          "dropShadow": true,
+          "enableFullscreen": true,
+          "titleStyle": {
+            "fontSize": "16px",
+            "fontWeight": 400
+          },
+          "useDashboardTimewindow": false,
+          "showLegend": false,
+          "actions": {},
+          "widgetStyle": {}
+        },
+        "id": "0753b316-156a-4990-9ab8-0772cc38a0ad"
+      }
+    },
+    "states": {
+      "default": {
+        "name": "Machines E8+",
+        "root": true,
+        "layouts": {
+          "main": {
+            "widgets": {
+              "a8129149-6f24-48c3-b83a-6791924e5f8b": {
+                "sizeX": 24,
+                "sizeY": 10,
+                "row": 0,
+                "col": 0
+              }
+            },
+            "gridSettings": {
+              "backgroundColor": "#eeeeee",
+              "columns": 24,
+              "margin": 10,
+              "outerMargin": true,
+              "backgroundSizeMode": "100%",
+              "autoFillHeight": false,
+              "mobileAutoFillHeight": false,
+              "mobileRowHeight": 70,
+              "layoutType": "default"
+            }
+          }
+        }
+      },
+      "machine": {
+        "name": "${entityName}",
+        "root": false,
+        "layouts": {
+          "main": {
+            "widgets": {
+              "efc26af2-a9a2-4ca9-9e4c-8ef3f3eadc29": {
+                "sizeX": 7,
+                "sizeY": 19,
+                "row": 0,
+                "col": 0,
+                "mobileOrder": 1,
+                "mobileHeight": 14
+              },
+              "0753b316-156a-4990-9ab8-0772cc38a0ad": {
+                "sizeX": 17,
+                "sizeY": 19,
+                "row": 0,
+                "col": 7,
+                "mobileOrder": 2,
+                "mobileHeight": 8
+              }
+            },
+            "gridSettings": {
+              "backgroundColor": "#eeeeee",
+              "columns": 24,
+              "margin": 10,
+              "outerMargin": true,
+              "backgroundSizeMode": "100%",
+              "autoFillHeight": false,
+              "mobileAutoFillHeight": false,
+              "mobileRowHeight": 70,
+              "layoutType": "default"
+            }
+          }
+        }
+      }
+    },
+    "entityAliases": {
+      "f09e5dd6-da5e-40cb-aadb-e1fa9e7dc4ca": {
+        "id": "f09e5dd6-da5e-40cb-aadb-e1fa9e7dc4ca",
+        "alias": "Machines E8+",
+        "filter": {
+          "type": "deviceType",
+          "resolveMultiple": true,
+          "deviceTypes": [
+            "E8+"
+          ],
+          "deviceNameFilter": ""
+        }
+      },
+      "171b7303-c0c7-4551-96e4-fd9c12dc46da": {
+        "id": "171b7303-c0c7-4551-96e4-fd9c12dc46da",
+        "alias": "Machine",
+        "filter": {
+          "type": "stateEntity",
+          "resolveMultiple": false,
+          "stateEntityParamName": null,
+          "defaultStateEntity": null
+        }
+      }
+    },
+    "filters": {},
+    "timewindow": {
+      "realtime": {
+        "timewindowMs": 86400000
+      }
+    },
+    "settings": {
+      "stateControllerId": "entity",
+      "showTitle": false,
+      "showDashboardsSelect": false,
+      "showEntitiesSelect": false,
+      "showDashboardTimewindow": false,
+      "showDashboardExport": false,
+      "toolbarAlwaysOpen": true,
+      "titleColor": "rgba(0,0,0,0.870588)"
+    }
+  },
+  "resources": null
+}

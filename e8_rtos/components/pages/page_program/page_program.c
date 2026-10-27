@@ -110,6 +110,9 @@ static int drawn_sub = -1;
 static int logged_bar = -1;
 static int title_number = 1;
 
+static portMUX_TYPE info_lock = portMUX_INITIALIZER_UNLOCKED;
+static page_program_info_t shared_info = { PROGRAM_IDLE, -1, 0, 0, 0, NULL };
+
 static int64_t ms_now(void) { return esp_timer_get_time() / 1000; }
 static int clamp(int v, int lo, int hi) { return v < lo ? lo : (v > hi ? hi : v); }
 static int prog_level(void) { return program >= FIRST_PROPRIO ? 0 : level; }
@@ -555,6 +558,30 @@ static void tick(void)
     page_session_program(running, state == ST_RUN ? display_level() : 0);
 }
 
+static void publish_info(bool on_session)
+{
+    page_program_info_t i = { PROGRAM_IDLE, -1, 0, 0, 0, NULL };
+    if (on_session && program >= 0) {
+        i.state = (program_state_t)state;
+        i.program = program;
+        i.level = prog_level();
+        i.total_s = info()->seconds[prog_level()];
+        int64_t left = total_ms - elapsed_ms;
+        i.remaining_s = left > 0 ? (int)((left + 999) / 1000) : 0;
+        i.name = info()->name;
+    }
+    portENTER_CRITICAL(&info_lock);
+    shared_info = i;
+    portEXIT_CRITICAL(&info_lock);
+}
+
+void page_program_get_info(page_program_info_t *out)
+{
+    portENTER_CRITICAL(&info_lock);
+    *out = shared_info;
+    portEXIT_CRITICAL(&info_lock);
+}
+
 static void task_program(void *arg)
 {
     (void)arg;
@@ -589,6 +616,7 @@ static void task_program(void *arg)
             tick();
         }
         prev_page = page;
+        publish_info(on_session);
     }
 }
 

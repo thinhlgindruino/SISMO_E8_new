@@ -15,6 +15,8 @@
  *   motor_ratio     200816  2..17 -> thanh ghi 9 (ratio) của CM8                                 9
  *   manual_minutes  200816  5 / 90: thời gian buổi tập trang MANUAL                              5
  *   language        74766   0..5: Français, English, Español, Italiano, Deutsch, Português       0
+ *   remote_lock     dashboard  khóa điều khiển từ xa (Play / Pause / Stop / đổi cài đặt từ ThingsBoard)  mở
+ *   server_host/port web cấu hình  địa chỉ server ThingsBoard (host rỗng = chưa cấu hình)        "" / 1883
  *
  * motor_combo_ok(mode, ratio): CM8 tính dải tốc độ v_min..v_max = 42..79 + step * (mode - 3)
  * + 3 * (ratio - 9) (step 12 / 15 / 20 cho mode <= 3 / 4 / 5) và lưu dạng số không dấu -> dải phải nằm
@@ -26,6 +28,7 @@
  */
 #pragma once
 #include <stdbool.h>
+#include <stddef.h>
 
 #define STORAGE_BASE              "/spiffs"
 
@@ -38,6 +41,8 @@ typedef enum { CARD_TIMER_BADGEUSE = 0, CARD_TIMER_SISMO = 1 } card_timer_t;
 #define MOTOR_RATIO_MIN           2
 #define MOTOR_RATIO_MAX           17
 #define LANGUAGE_COUNT            6
+#define SERVER_HOST_MAX           63
+#define SERVER_PORT_DEFAULT       1883
 
 void           device_settings_start(void);
 bool           device_storage_ok(void);
@@ -65,3 +70,7 @@ bool           device_set_manual_minutes(int minutes);
 int            device_get_language(void);
 bool           device_set_language(int lang);
 const char    *language_name(int lang);
+bool           device_get_remote_lock(void);
+bool           device_set_remote_lock(bool locked);
+void           device_get_server(char *host, size_t n, int *port);
+bool           device_set_server(const char *host, int port);

@@ -8,6 +8,8 @@
  * - Trong lúc cấu hình KHÔNG tự thử kết nối lại (mỗi lần thử STA phải quét kênh, làm điện thoại
  *   đang vào AP bị rớt). AP tự theo kênh của router khi STA đang kết nối.
  * - Sự kiện WiFi / IP chạy trong task event loop của ESP-IDF (core 0); trạng thái đọc qua critical section.
+ * - LAN: bật GPIO16 (bộ dao động 50 MHz) rồi mới cài driver EMAC + LAN8720; netif "ETH" lấy IP bằng DHCP. ONLINE khi
+ *   WiFi hoặc LAN có IP. Khởi tạo LAN lỗi (board không có chip LAN) -> tắt lại GPIO16, bỏ qua, WiFi vẫn chạy.
  */
 #include <stdio.h>
 #include <string.h>
@@ -20,6 +22,8 @@
 #include "esp_wifi.h"
 #include "esp_event.h"
 #include "esp_netif.h"
+#include "esp_eth.h"
+#include "driver/gpio.h"
 #include "esp_timer.h"
 #include "device_settings.h"
 #include "nvs_flash.h"
@@ -40,11 +44,18 @@ static const char *TAG = "MANG";
 static portMUX_TYPE lock = portMUX_INITIALIZER_UNLOCKED;
 static net_state_t status = NET_OFFLINE;
 static char ap_name[33];
+static char mac_text[18] = "";
 static char saved_ssid[33];
 static char saved_pass[65];
 static char ip_sta[16] = "";
 static bool has_saved_wifi = false;
 static bool sta_has_ip = false;
+static bool eth_has_ip = false;
+static bool eth_link_up = false;
+static char ip_eth[16] = "";
+static esp_netif_t *netif_eth = NULL;
+static int64_t eth_link_ms = 0;
+static esp_timer_handle_t eth_wait_timer = NULL;
 static bool config_active = false;
 static bool fs_ok = false;
 static int  retry_count = 0;
@@ -85,18 +96,43 @@ const char *net_state_name(net_state_t t)
 }
 
 const char *net_ap_name(void) { return ap_name; }
+const char *net_mac_text(void) { return mac_text; }
+
+net_link_t net_get_link(void)
+{
+    if (eth_has_ip) return NET_LINK_LAN;
+    if (sta_has_ip) return NET_LINK_WIFI;
+    return NET_LINK_NONE;
+}
+
+const char *net_link_name(net_link_t l)
+{
+    switch (l) {
+    case NET_LINK_WIFI: return "WiFi";
+    case NET_LINK_LAN:  return "LAN";
+    default:            return "-";
+    }
+}
+
+int net_get_rssi(void)
+{
+    wifi_ap_record_t ap;
+    if (net_get_link() != NET_LINK_WIFI) return 0;
+    return esp_wifi_sta_get_ap_info(&ap) == ESP_OK ? ap.rssi : 0;
+}
 
 void net_get_info(char *ssid, size_t n_ssid, char *ip, size_t n_ip)
 {
     portENTER_CRITICAL(&lock);
-    if (ssid) snprintf(ssid, n_ssid, "%s", saved_ssid);
-    if (ip)   snprintf(ip, n_ip, "%s", config_active ? NET_AP_IP : ip_sta);
+    bool lan = eth_has_ip;
+    if (ssid) snprintf(ssid, n_ssid, "%s", lan ? "LAN" : saved_ssid);
+    if (ip)   snprintf(ip, n_ip, "%s", config_active ? NET_AP_IP : lan ? ip_eth : ip_sta);
     portEXIT_CRITICAL(&lock);
 }
 
 static net_state_t normal_state(void)
 {
-    if (sta_has_ip) return NET_ONLINE;
+    if (sta_has_ip || eth_has_ip) return NET_ONLINE;
     if (has_saved_wifi && retry_count < FAST_RETRY_COUNT) return NET_CONNECTING;
     return NET_OFFLINE;
 }
@@ -255,6 +291,40 @@ static void on_event(void *arg, esp_event_base_t base, int32_t id, void *data)
         retry_count = 0;
         ESP_LOGI(TAG, "Da vao WiFi \"%s\", IP %s", saved_ssid, ip_sta);
         if (!config_active) set_state(NET_ONLINE);
+    } else if (base == ETH_EVENT && id == ETHERNET_EVENT_CONNECTED) {
+        eth_link_up = true;
+        eth_link_ms = esp_timer_get_time() / 1000;
+        if (NET_ETH_STATIC_IP[0] && netif_eth) {
+            esp_netif_dhcpc_stop(netif_eth);
+            esp_netif_ip_info_t ip = {0};
+            ip.ip.addr      = ipaddr_addr(NET_ETH_STATIC_IP);
+            ip.gw.addr      = ipaddr_addr(NET_ETH_STATIC_GW);
+            ip.netmask.addr = ipaddr_addr(NET_ETH_STATIC_MASK);
+            ESP_LOGI(TAG, "LAN: da cam day (link up) -> IP tinh %s", NET_ETH_STATIC_IP);
+            esp_netif_set_ip_info(netif_eth, &ip);
+        } else {
+            ESP_LOGI(TAG, "LAN: da cam day (link up) -> cho IP (DHCP)");
+        }
+    } else if (base == ETH_EVENT && id == ETHERNET_EVENT_DISCONNECTED) {
+        eth_link_up = false;
+        eth_has_ip = false;
+        portENTER_CRITICAL(&lock);
+        ip_eth[0] = '\0';
+        portEXIT_CRITICAL(&lock);
+        ESP_LOGW(TAG, "LAN: rut day (link down)%s", sta_has_ip ? " -> dung WiFi" : "");
+        if (!config_active) set_state(normal_state());
+    } else if (base == IP_EVENT && id == IP_EVENT_ETH_GOT_IP) {
+        ip_event_got_ip_t *e = (ip_event_got_ip_t *)data;
+        portENTER_CRITICAL(&lock);
+        snprintf(ip_eth, sizeof(ip_eth), IPSTR, IP2STR(&e->ip_info.ip));
+        portEXIT_CRITICAL(&lock);
+        eth_has_ip = true;
+        ESP_LOGI(TAG, "LAN: IP %s (gateway " IPSTR ")", ip_eth, IP2STR(&e->ip_info.gw));
+        if (!config_active) set_state(NET_ONLINE);
+    } else if (base == IP_EVENT && id == IP_EVENT_ETH_LOST_IP) {
+        eth_has_ip = false;
+        ESP_LOGW(TAG, "LAN: mat IP");
+        if (!config_active) set_state(normal_state());
     } else if (base == WIFI_EVENT && id == WIFI_EVENT_AP_STACONNECTED) {
         wifi_event_ap_staconnected_t *e = (wifi_event_ap_staconnected_t *)data;
         ESP_LOGI(TAG, "Thiet bi " MACSTR " da vao AP", MAC2STR(e->mac));
@@ -262,6 +332,63 @@ static void on_event(void *arg, esp_event_base_t base, int32_t id, void *data)
         wifi_event_ap_stadisconnected_t *e = (wifi_event_ap_stadisconnected_t *)data;
         ESP_LOGI(TAG, "Thiet bi " MACSTR " da roi AP", MAC2STR(e->mac));
     }
+}
+
+static void eth_wait_log(void *arg)
+{
+    (void)arg;
+    if (!eth_link_up || eth_has_ip) return;
+    ESP_LOGW(TAG, "LAN: co day nhung chua co IP sau %lld s (DHCP khong tra loi)",
+             (long long)(esp_timer_get_time() / 1000 - eth_link_ms) / 1000);
+}
+
+static void eth_start(void)
+{
+#if NET_ETH_ENABLED
+    gpio_config_t pw = { .pin_bit_mask = 1ULL << NET_ETH_POWER_GPIO, .mode = GPIO_MODE_OUTPUT };
+    gpio_config(&pw);
+    gpio_set_level(NET_ETH_POWER_GPIO, 1);
+    vTaskDelay(pdMS_TO_TICKS(10));
+
+    eth_mac_config_t mac_cfg = ETH_MAC_DEFAULT_CONFIG();
+    eth_esp32_emac_config_t emac_cfg = ETH_ESP32_EMAC_DEFAULT_CONFIG();
+    emac_cfg.smi_gpio.mdc_num = NET_ETH_MDC_GPIO;
+    emac_cfg.smi_gpio.mdio_num = NET_ETH_MDIO_GPIO;
+    emac_cfg.clock_config.rmii.clock_mode = EMAC_CLK_EXT_IN;
+    emac_cfg.clock_config.rmii.clock_gpio = EMAC_CLK_IN_GPIO;
+    eth_phy_config_t phy_cfg = ETH_PHY_DEFAULT_CONFIG();
+    phy_cfg.phy_addr = NET_ETH_PHY_ADDR;
+    phy_cfg.reset_gpio_num = -1;
+
+    esp_eth_mac_t *mac = esp_eth_mac_new_esp32(&emac_cfg, &mac_cfg);
+    esp_eth_phy_t *phy = esp_eth_phy_new_lan87xx(&phy_cfg);
+    esp_eth_handle_t eth = NULL;
+    esp_eth_config_t cfg = ETH_DEFAULT_CONFIG(mac, phy);
+    esp_err_t e = (mac && phy) ? esp_eth_driver_install(&cfg, &eth) : ESP_FAIL;
+    if (e != ESP_OK) {
+        ESP_LOGW(TAG, "LAN: khong khoi tao duoc (%s) -> bo qua LAN, chi dung WiFi", esp_err_to_name(e));
+        if (phy) phy->del(phy);
+        if (mac) mac->del(mac);
+        gpio_set_level(NET_ETH_POWER_GPIO, 0);
+        return;
+    }
+
+    esp_netif_inherent_config_t base = ESP_NETIF_INHERENT_DEFAULT_ETH();
+    base.route_prio = NET_ETH_ROUTE_PRIO;
+    esp_netif_config_t ncfg = { .base = &base, .stack = ESP_NETIF_NETSTACK_DEFAULT_ETH };
+    netif_eth = esp_netif_new(&ncfg);
+    esp_netif_attach(netif_eth, esp_eth_new_netif_glue(eth));
+    esp_event_handler_register(ETH_EVENT, ESP_EVENT_ANY_ID, on_event, NULL);
+    esp_event_handler_register(IP_EVENT, IP_EVENT_ETH_GOT_IP, on_event, NULL);
+    esp_event_handler_register(IP_EVENT, IP_EVENT_ETH_LOST_IP, on_event, NULL);
+    uint8_t m[6] = {0};
+    esp_eth_ioctl(eth, ETH_CMD_G_MAC_ADDR, m);
+    const esp_timer_create_args_t wa = { .callback = eth_wait_log, .name = "eth_wait" };
+    if (esp_timer_create(&wa, &eth_wait_timer) == ESP_OK) esp_timer_start_periodic(eth_wait_timer, (uint64_t)NET_ETH_WAIT_LOG_MS * 1000);
+    e = esp_eth_start(eth);
+    ESP_LOGI(TAG, "LAN (LAN8720) %s, MAC " MACSTR ", %s", e == ESP_OK ? "da khoi dong" : "loi khoi dong", MAC2STR(m),
+             NET_ETH_STATIC_IP[0] ? "IP tinh " NET_ETH_STATIC_IP : "DHCP");
+#endif
 }
 
 void net_start(void)
@@ -282,6 +409,7 @@ void net_start(void)
     uint8_t mac[6];
     esp_read_mac(mac, ESP_MAC_WIFI_STA);
     snprintf(ap_name, sizeof(ap_name), "SISMO_E8_%02X%02X%02X", mac[3], mac[4], mac[5]);
+    snprintf(mac_text, sizeof(mac_text), "%02X:%02X:%02X:%02X:%02X:%02X", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
     ESP_LOGI(TAG, "MAC " MACSTR " -> ten AP cau hinh: %s", MAC2STR(mac), ap_name);
 
     ESP_ERROR_CHECK(esp_netif_init());
@@ -329,6 +457,7 @@ void net_start(void)
     }
     set_state(NET_OFFLINE);
     ESP_ERROR_CHECK(esp_wifi_start());
+    eth_start();
 }
 
 void net_config_start(void)

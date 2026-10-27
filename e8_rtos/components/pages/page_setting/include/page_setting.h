@@ -17,10 +17,12 @@
  *   - Mật khẩu 5 hoặc 6 số. Đủ 5 số mà sai (và không phải đầu của mật khẩu 6 số nào) -> đứng yên,
  *     bấm số tiếp theo -> xóa hết; đủ 6 số mà sai -> bấm số tiếp theo -> xóa hết. Phím C -> xóa hết.
  *   - Trang 0 (khởi động) hiện 3 s       -> tự sang trang chính
+ *   - page_setting_refresh()             -> ghi lại ngôn ngữ + icon trang cài đặt (sau khi đổi từ ThingsBoard)
  */
 #pragma once
 #include <stdbool.h>
 #include "hmi.h"
 
 void page_setting_start(void);
+void page_setting_refresh(void);
 bool page_setting_on_event(const hmi_event_t *e);

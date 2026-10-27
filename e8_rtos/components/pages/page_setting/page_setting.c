@@ -25,6 +25,8 @@
  *   mất CM8 (page_session_take_cm8_lost) -> về 0000, hiện ERR.02 ngay, chờ như lúc mới bật. Chưa qua được
  *   0000 mà màn hình sang trang khác -> đưa về lại 0000.
  * - Trước khi khởi động lại (Submit WiFi / OTA): đưa màn hình về trang 0.
+ * - page_setting_refresh() (cloud gọi sau khi đổi cài đặt từ ThingsBoard): task ghi lại ngôn ngữ 0x1030 và icon
+ *   của trang cài đặt đang mở.
  */
 #include <stdio.h>
 #include <string.h>
@@ -52,6 +54,9 @@
 #define STARTUP_MESSAGE_REFRESH_MS 1000
 
 static QueueHandle_t event_queue;
+static volatile bool refresh_request = false;
+
+void page_setting_refresh(void) { refresh_request = true; }
 
 bool page_setting_on_event(const hmi_event_t *e)
 {
@@ -434,6 +439,15 @@ static void task_setting(void *arg)
                     log_send("   [KHOI DONG] CM8 chua san sang -> ve trang khoi dong");
                 }
             }
+        }
+
+        if (refresh_request) {
+            refresh_request = false;
+            hmi_write(ADDR_LANGUAGE, (uint16_t)device_get_language());
+            if (page == PAGE_MODE)     show_mode();
+            if (page == PAGE_ACCESS)   show_access_page();
+            if (page == PAGE_FACTORY)  show_factory_page();
+            if (page == PAGE_SETTINGS) icon_written = -1;
         }
 
         if (page != prev_page) {

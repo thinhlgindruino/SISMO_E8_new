@@ -3,7 +3,8 @@
  *   hmi_rx   : nhận + giải mã khung từ màn hình, cập nhật dữ liệu chung, phát sự kiện nút bấm
  *   hmi_poll : hỏi 0x1011/0x1012 mỗi 100 ms, biến 0x1000..0x1009 và trang (0x7000) xen kẽ
  *
- * Nối dây: GPIO16 (RX ESP32) <- TXA màn hình, GPIO17 (TX ESP32) -> RXB màn hình, GND chung.
+ * Nối dây (board WT32-ETH01): GPIO36 (RX ESP32, chân IO36) <- TXA màn hình, GPIO17 (TX ESP32, chân TXD) -> RXB
+ * màn hình, GND chung. GPIO16 không dùng được nữa vì board dùng để bật bộ dao động 50 MHz của LAN.
  * 115200 baud. Quá HMI_LINK_TIMEOUT_MS (2 s) không nhận được dữ liệu -> coi như mất màn hình.
  * Mỗi lần có lại liên lạc với màn hình: ghi âm lượng loa HMI_VOLUME (0..16) vào thanh ghi 0x700B
  * (loa rời cắm CON6, phát WAV; tiếng "tách" khi chạm là còi BZ1, không theo âm lượng này).
@@ -28,7 +29,7 @@
 #include "hmi_map.h"
 
 #define HMI_UART                  UART_NUM_2
-#define HMI_RX_PIN                16
+#define HMI_RX_PIN                36
 #define HMI_TX_PIN                17
 #define HMI_BAUD                  115200
 #define HMI_LINK_TIMEOUT_MS       2000

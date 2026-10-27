@@ -1,0 +1,46 @@
+# ThingsBoard CE 4.3.1.7 + PostgreSQL cho E8+ (theo hướng dẫn chính thức "Installing ThingsBoard CE using Docker (Windows)")
+# Cổng: 8080 giao diện web + REST API, 1883 MQTT (E8+ kết nối vào đây), 8883 MQTT TLS (chưa dùng)
+# Dữ liệu nằm trong volume tb-postgres-data -> docker compose down / up không mất dữ liệu.
+services:
+
+  postgres:
+    restart: always
+    image: "postgres:18"
+    ports:
+      - "5432"
+    environment:
+      POSTGRES_DB: thingsboard
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - postgres-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d thingsboard"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  thingsboard-ce:
+    restart: always
+    image: "thingsboard/tb-node:4.3.1.7"
+    ports:
+      - "8080:8080"
+      - "1883:1883"
+      - "8883:8883"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "10"
+    environment:
+      TB_SERVICE_ID: tb-ce-node
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/thingsboard
+      SPRING_DATASOURCE_PASSWORD: postgres
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  postgres-data:
+    name: tb-postgres-data
+    driver: local

@@ -1,18 +1,34 @@
 # e8_rtos — firmware ESP32 cho E8+
 
-ESP-IDF v5.5 + FreeRTOS. Màn hình HMI (LT7689) qua UART2, mạch động cơ CM8 qua Modbus RTU (UART1), WiFi.
+ESP-IDF v5.5 + FreeRTOS. Màn hình HMI (LT7689) qua UART2, mạch động cơ CM8 qua Modbus RTU (UART1), WiFi + LAN, ThingsBoard (MQTT).
+
+## Board WT32-ETH01 (từ 1.14.0)
+
+| Chân board | GPIO | Nối tới |
+|---|---|---|
+| IO36 | 36 | màn hình TXA (RX của ESP32) |
+| TXD | 17 | màn hình RXB |
+| CFG | 32 | SP3232 RXD (Modbus TX sang CM8) |
+| 485_EN | 33 | SP3232 TXD (Modbus RX từ CM8) |
+| 3V3 | - | SP3232 VCC (3.3V, không dùng 5V) |
+| 5V / GND | - | nguồn 5V (≥ 500 mA), GND chung với màn hình, SP3232 |
+| TXO / RXO / IOO / EN | 1 / 3 / 0 / - | mạch nạp USB (RX / TX / IO0 / RST) |
+| RJ45 | 0, 16, 18, 19, 21-23, 25-27 | LAN (LAN8720), các chân này không dùng cho việc khác |
+
+Nạp lần đầu qua mạch nạp USB; sau đó nạp qua web (tab Upload) hoặc ThingsBoard OTA.
+Mạng: cắm dây LAN có DHCP -> dùng LAN (ưu tiên); không có LAN -> WiFi đã lưu.
 
 ## Cấu trúc
 
 ```
 e8_rtos/
 ├── CMakeLists.txt            project + PROJECT_VER (phiên bản firmware)
-├── partitions.csv            nvs | otadata | ota_0 | ota_1 | storage (SPIFFS: wifi.json)
+├── partitions.csv            nvs | otadata | ota_0 | ota_1 | storage (SPIFFS: settings.json, wifi.json, cloud.json)
 ├── sdkconfig.defaults
 ├── main/main.c               khởi động: watchdog + gọi *_start() của từng module
 └── components/
     ├── app_config/           bảng task (ưu tiên / stack / core), watchdog, cờ gỡ lỗi
-    ├── device_settings/      cài đặt lưu flash /spiffs/settings.json (MODE, thẻ, timer, mode/ratio, manual), gắn SPIFFS
+    ├── device_settings/      cài đặt lưu flash /spiffs/settings.json (MODE, thẻ, timer, mode/ratio, manual, ngôn ngữ, khóa từ xa, server), gắn SPIFFS
     ├── logger/               task logger: log_send() + hook in báo cáo định kỳ
     ├── hmi/                  UART màn hình (task hmi_rx, hmi_poll)
     │   └── include/hmi_map.h số trang, địa chỉ biến của UI — sửa UI thì sửa file này
@@ -22,8 +38,9 @@ e8_rtos/
     │   ├── page_session/     trang buổi tập 10/11 + động cơ cho Programmes / Perso 6/14: cường độ, Xung, an toàn (task session)
     │   ├── page_setting/     Sismo, mật khẩu, 74700 / 74710 / 74766 / 200816, trang khởi động (task setting)
     │   └── page_program/     Programmes + Perso: mức độ, trang 0006 / 0014 / 0013, chạy bài; program_data.c sinh bởi tools/programmes.py (task program)
-    ├── network/              WiFi STA + AP cấu hình, web 192.168.10.100, wifi.json
-    └── ota/                  cập nhật firmware qua web + rollback
+    ├── network/              WiFi STA + AP cấu hình, LAN (LAN8720), web 192.168.10.100 (Settings / Server / Upload), wifi.json
+    ├── ota/                  ghi firmware + rollback (dùng chung cho web và ThingsBoard)
+    └── cloud/                ThingsBoard qua MQTT: tự đăng ký, trạng thái, RPC điều khiển từ xa, OTA (task cloud, core 0)
 ```
 
 Phụ thuộc (mũi tên = "dùng"):
@@ -34,7 +51,8 @@ ui_router ──► page_session, page_setting, page_program, hmi
 page_program ──► hmi, page_session
 page_setting ──► hmi, network, page_session
 page_session ──► hmi, motor_modbus
-network ──► ota
+cloud ──► hmi, network, device_settings, motor_modbus, ota, page_session, page_program, page_setting
+network ──► ota, device_settings
 hmi, motor_modbus, logger, ota ──► (chỉ ESP-IDF + app_config)
 ```
 
@@ -85,6 +103,11 @@ Thêm mật khẩu mới: thêm 1 dòng vào `PASSWORD_TABLE` trong `page_settin
 6. Tab Upload có nút **Roll back** để quay về bản trước bất cứ lúc nào.
 
 Chỉ nhận file `.bin` của project này (so tên project trong file), file khác bị từ chối trước khi ghi.
+
+## ThingsBoard
+
+Cài server, dashboard, cách thử: xem `thingsboard/Huong_dan_ThingsBoard.md` ở thư mục gốc repo.
+Địa chỉ server nhập ở web cấu hình, tab **Server** (để trống = không kết nối). Monitor in các dòng `[CLOUD] ...`.
 
 ## Khi đổi bảng phân vùng / sdkconfig.defaults
 

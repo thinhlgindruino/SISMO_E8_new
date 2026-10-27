@@ -45,7 +45,7 @@ void logger_add_hook(void (*hook)(void))
 #if DEBUG_TASK_STATS
 static void print_task_stats(void)
 {
-    static const char *TASK_NAMES[] = {"session", "motor", "hmi_rx", "hmi_poll", "logger", "setting", "program"};
+    static const char *TASK_NAMES[] = {"session", "motor", "hmi_rx", "hmi_poll", "logger", "setting", "program", "cloud", "mqtt_task"};
     printf("---- Stack con trong (byte):");
     for (int i = 0; i < (int)(sizeof(TASK_NAMES) / sizeof(TASK_NAMES[0])); i++) {
         TaskHandle_t h = xTaskGetHandle(TASK_NAMES[i]);

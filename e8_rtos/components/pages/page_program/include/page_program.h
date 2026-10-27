@@ -12,10 +12,24 @@
  * (Proprioception về 0025, Perso về 0007; đang chạy thì dừng bài); 2 Xung bật / tắt; 3 Play: bíp 5 lần rồi chạy /
  * tạm dừng / chạy tiếp; 4 Stop: dừng, vẽ lại trang như lúc mới vào (hết bài cũng vậy).
  * Động cơ chạy theo mức cột hiện tại qua task session (page_session_program).
+ * page_program_get_info(): bản sao trạng thái bài đang mở (cho cloud báo lên ThingsBoard); điều khiển từ xa
+ * gửi nút Play / Stop qua page_program_on_event() như màn hình báo.
  */
 #pragma once
 #include <stdbool.h>
 #include "hmi.h"
 
+typedef enum { PROGRAM_IDLE = 0, PROGRAM_COUNTDOWN, PROGRAM_RUN, PROGRAM_PAUSE } program_state_t;
+
+typedef struct {
+    program_state_t state;
+    int             program;
+    int             level;
+    int             remaining_s;
+    int             total_s;
+    const char     *name;
+} page_program_info_t;
+
 void page_program_start(void);
+void page_program_get_info(page_program_info_t *out);
 bool page_program_on_event(const hmi_event_t *e);

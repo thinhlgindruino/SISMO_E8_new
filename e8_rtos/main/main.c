@@ -12,12 +12,13 @@
  *   pages/page_program  Programmes + Perso: trang 0006 / 0014 / 0013, chạy bài     task program (3)
  *   network             WiFi STA/AP, web 192.168.10.100, wifi.json             (core 0)
  *   ota                 cập nhật firmware qua web (tab Upload) + tự quay về bản cũ khi bản mới lỗi
+ *   cloud               ThingsBoard qua MQTT: trạng thái, điều khiển từ xa, OTA   task cloud (3, core 0)
  *   logger              in log ra Monitor                                      task logger (2)
  *
  * app_main: in lý do khởi động, cấu hình task watchdog 3 s (giám sát cả task Idle của 2 core,
  * quá hạn -> khởi động lại), rồi khởi động các module theo thứ tự: logger (để module khác gửi log
  * được) -> device_settings (SPIFFS, trước network) -> CM8 -> màn hình -> router -> các trang
- * -> mạng -> OTA. app_main kết thúc, các task tiếp tục chạy độc lập.
+ * -> mạng -> OTA -> cloud. app_main kết thúc, các task tiếp tục chạy độc lập.
  */
 #include <stdio.h>
 #include "freertos/FreeRTOS.h"
@@ -35,6 +36,7 @@
 #include "network.h"
 #include "ota.h"
 #include "device_settings.h"
+#include "cloud.h"
 
 static const char *reset_reason_name(esp_reset_reason_t r)
 {
@@ -72,7 +74,8 @@ void app_main(void)
     page_setting_start();
     page_program_start();
     ota_start();
+    cloud_start();
 
-    printf("Da tao 7 task: session, motor, hmi_rx, hmi_poll, setting, program, logger | AP cau hinh: %s\n",
+    printf("Da tao 8 task: session, motor, hmi_rx, hmi_poll, setting, program, logger, cloud | AP cau hinh: %s\n",
            net_ap_name());
 }

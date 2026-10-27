@@ -9,7 +9,9 @@
  * - Giá trị trong RAM đọc / ghi có khóa (critical section) vì task session đọc liên tục còn
  *   task setting ghi. Mỗi lần ghi lưu lại cả file.
  * - storage_write_text(): ghi ra file tạm "<tên>.tmp" rồi đổi tên -> mất điện giữa chừng
- *   không làm hỏng file cũ. network dùng chung hàm này để ghi wifi.json.
+ *   không làm hỏng file cũ. network dùng chung hàm này để ghi wifi.json, cloud để ghi cloud.json.
+ * - Địa chỉ server ThingsBoard (server_host chuỗi, server_port số) lưu chung file nhưng ngoài bảng
+ *   SETTINGS vì là chuỗi; host rỗng = chưa cấu hình (cloud không kết nối).
  */
 #include <stdio.h>
 #include <string.h>
@@ -29,7 +31,7 @@ static const char *TAG = "SETTINGS";
 #define CM8_RATIO_STEP            3
 #define CM8_V_LIMIT               180
 
-typedef enum { S_CONTROL_MODE, S_ACCESS_MODE, S_CARD_TIMER, S_MOTOR_MODE, S_MOTOR_RATIO, S_MANUAL_MIN, S_LANGUAGE, S_COUNT } setting_id_t;
+typedef enum { S_CONTROL_MODE, S_ACCESS_MODE, S_CARD_TIMER, S_MOTOR_MODE, S_MOTOR_RATIO, S_MANUAL_MIN, S_LANGUAGE, S_REMOTE_LOCK, S_COUNT } setting_id_t;
 
 typedef struct {
     const char *key;
@@ -45,11 +47,14 @@ static const setting_def_t SETTINGS[S_COUNT] = {
     [S_MOTOR_RATIO]  = { "motor_ratio",    MOTOR_RATIO_MIN, MOTOR_RATIO_MAX, 9, { NULL, NULL } },
     [S_MANUAL_MIN]   = { "manual_minutes", 5, 90, 5, { NULL, NULL } },
     [S_LANGUAGE]     = { "language",       0, LANGUAGE_COUNT - 1, 0, { NULL, NULL } },
+    [S_REMOTE_LOCK]  = { "remote_lock",    0, 1, 0,                   { "unlocked", "locked" } },
 };
 
 static bool fs_ok = false;
 static portMUX_TYPE lock = portMUX_INITIALIZER_UNLOCKED;
 static int values[S_COUNT];
+static char server_host[SERVER_HOST_MAX + 1] = "";
+static int  server_port = SERVER_PORT_DEFAULT;
 
 bool device_storage_ok(void) { return fs_ok; }
 
@@ -93,7 +98,7 @@ static void load(void)
     for (int i = 0; i < S_COUNT; i++) values[i] = SETTINGS[i].def;
     FILE *f = fopen(FILE_SETTINGS, "r");
     if (!f) { ESP_LOGI(TAG, "Chua co %s -> dung mac dinh", FILE_SETTINGS); return; }
-    char buf[512];
+    char buf[768];
     size_t n = fread(buf, 1, sizeof(buf) - 1, f);
     fclose(f);
     buf[n] = '\0';
@@ -110,6 +115,10 @@ static void load(void)
         }
         values[i] = v;
     }
+    const cJSON *h = cJSON_GetObjectItemCaseSensitive(j, "server_host");
+    const cJSON *p = cJSON_GetObjectItemCaseSensitive(j, "server_port");
+    if (cJSON_IsString(h)) snprintf(server_host, sizeof(server_host), "%s", h->valuestring);
+    if (cJSON_IsNumber(p) && p->valueint > 0 && p->valueint < 65536) server_port = p->valueint;
     cJSON_Delete(j);
     if (!motor_combo_ok(values[S_MOTOR_MODE], values[S_MOTOR_RATIO])) {
         ESP_LOGW(TAG, "Mode %d + ratio %d khong hop le -> ratio %d", values[S_MOTOR_MODE], values[S_MOTOR_RATIO], SETTINGS[S_MOTOR_RATIO].def);
@@ -125,6 +134,11 @@ static bool save(void)
         if (SETTINGS[i].names[0]) cJSON_AddStringToObject(j, SETTINGS[i].key, SETTINGS[i].names[v]);
         else                      cJSON_AddNumberToObject(j, SETTINGS[i].key, v);
     }
+    char host[SERVER_HOST_MAX + 1];
+    int port;
+    device_get_server(host, sizeof(host), &port);
+    cJSON_AddStringToObject(j, "server_host", host);
+    cJSON_AddNumberToObject(j, "server_port", port);
     char *txt = cJSON_Print(j);
     cJSON_Delete(j);
     if (!txt) return false;
@@ -158,10 +172,11 @@ void device_settings_start(void)
     fs_ok = (e == ESP_OK);
     if (!fs_ok) { ESP_LOGE(TAG, "Khong mo duoc SPIFFS (%s) -> khong luu duoc cai dat", esp_err_to_name(e)); return; }
     load();
-    ESP_LOGI(TAG, "Cai dat: %s | %s | timer %s | mode %d | ratio %d | manual %d phut | %s",
+    ESP_LOGI(TAG, "Cai dat: %s | %s | timer %s | mode %d | ratio %d | manual %d phut | %s | dieu khien tu xa %s | server %s:%d",
              control_mode_name(get(S_CONTROL_MODE)), access_mode_name(get(S_ACCESS_MODE)),
              card_timer_name(get(S_CARD_TIMER)), get(S_MOTOR_MODE), get(S_MOTOR_RATIO), get(S_MANUAL_MIN),
-             language_name(get(S_LANGUAGE)));
+             language_name(get(S_LANGUAGE)), get(S_REMOTE_LOCK) ? "KHOA" : "mo",
+             server_host[0] ? server_host : "(chua cai)", server_port);
 }
 
 const char *control_mode_name(control_mode_t m) { return m == CONTROL_MODE_WIFI ? "MODE WIFI" : "MODE LOCAL"; }
@@ -182,6 +197,28 @@ int            device_get_manual_minutes(void)        { return get(S_MANUAL_MIN)
 bool           device_set_manual_minutes(int minutes) { return set(S_MANUAL_MIN, minutes); }
 int            device_get_language(void)              { return get(S_LANGUAGE); }
 bool           device_set_language(int lang)          { return set(S_LANGUAGE, lang); }
+bool           device_get_remote_lock(void)           { return get(S_REMOTE_LOCK) != 0; }
+bool           device_set_remote_lock(bool locked)    { return set(S_REMOTE_LOCK, locked ? 1 : 0); }
+
+void device_get_server(char *host, size_t n, int *port)
+{
+    portENTER_CRITICAL(&lock);
+    snprintf(host, n, "%s", server_host);
+    *port = server_port;
+    portEXIT_CRITICAL(&lock);
+}
+
+bool device_set_server(const char *host, int port)
+{
+    if (!host || strlen(host) > SERVER_HOST_MAX || port <= 0 || port > 65535) return false;
+    portENTER_CRITICAL(&lock);
+    snprintf(server_host, sizeof(server_host), "%s", host);
+    server_port = port;
+    portEXIT_CRITICAL(&lock);
+    bool ok = save();
+    ESP_LOGI(TAG, "Luu server ThingsBoard %s:%d: %s", host[0] ? host : "(trong)", port, ok ? "OK" : "LOI");
+    return ok;
+}
 
 const char *language_name(int lang)
 {

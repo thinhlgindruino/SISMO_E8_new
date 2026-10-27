@@ -7,16 +7,20 @@
  *   POST /update     thân request là nguyên file .bin -> ghi qua component ota -> khởi động lại
  *   POST /rollback   quay về firmware ở vùng OTA còn lại
  *   GET  /wifi.json  xem file WiFi đã lưu (mật khẩu che ****)
+ *   GET  /server     tab Server: địa chỉ + cổng server ThingsBoard (MQTT)
+ *   POST /server     lưu địa chỉ server vào settings.json (không khởi động lại, cloud tự kết nối lại)
  *
  * Chỉ chạy trong chế độ cấu hình (web_start / web_stop do network gọi). Server chạy core 0, stack 8 KB.
  */
 #include <stdio.h>
 #include <string.h>
 #include <ctype.h>
+#include <stdlib.h>
 #include "esp_log.h"
 #include "esp_http_server.h"
 #include "ota.h"
 #include "network.h"
+#include "device_settings.h"
 #include "web.h"
 
 static const char *TAG = "WEB";
@@ -45,9 +49,11 @@ static const char *HTML_HEAD =
     "<div class='tieude'><h1>E8 PARAMETERS SETTINGS</h1></div>";
 
 static const char *HTML_MENU_SETTINGS =
-    "<div class='menu'><a class='chon' href='/'>Settings</a><a href='/upload'>Upload</a></div>";
+    "<div class='menu'><a class='chon' href='/'>Settings</a><a href='/server'>Server</a><a href='/upload'>Upload</a></div>";
+static const char *HTML_MENU_SERVER =
+    "<div class='menu'><a href='/'>Settings</a><a class='chon' href='/server'>Server</a><a href='/upload'>Upload</a></div>";
 static const char *HTML_MENU_UPLOAD =
-    "<div class='menu'><a href='/'>Settings</a><a class='chon' href='/upload'>Upload</a></div>";
+    "<div class='menu'><a href='/'>Settings</a><a href='/server'>Server</a><a class='chon' href='/upload'>Upload</a></div>";
 
 static const char *HTML_SETTINGS =
     "<div class='noidung'><h2>DEVICE SETTINGS</h2><h3>WIFI SETUP</h3>"
@@ -167,6 +173,55 @@ static esp_err_t handle_view_json(httpd_req_t *req)
     return httpd_resp_sendstr(req, n > 0 ? buf : "{}");
 }
 
+static esp_err_t handle_server_page(httpd_req_t *req)
+{
+    char host[SERVER_HOST_MAX + 1], host_html[3 * SERVER_HOST_MAX + 8];
+    int port;
+    device_get_server(host, sizeof(host), &port);
+    html_escape(host, host_html, sizeof(host_html));
+    char content[900];
+    snprintf(content, sizeof(content),
+        "<div class='noidung'><h2>DEVICE SETTINGS</h2><h3>THINGSBOARD SERVER</h3>"
+        "<p>Device name: <b>%s</b></p>"
+        "<form method='post' action='/server'>"
+        "<label>Server (IP or domain):</label><input type='text' name='host' maxlength='%d' value=\"%s\">"
+        "<label>MQTT port:</label><input type='text' name='port' maxlength='5' value='%d'>"
+        "<div class='nut'><input type='submit' value='Save'></div>"
+        "</form><p>Leave the server empty to disconnect from ThingsBoard.</p></div>",
+        net_ap_name(), SERVER_HOST_MAX, host_html, port);
+    return send_page(req, HTML_MENU_SERVER, content);
+}
+
+static esp_err_t handle_save_server(httpd_req_t *req)
+{
+    char body[200];
+    int total = 0;
+    if (req->content_len >= sizeof(body)) return send_message(req, "Data too long.");
+    while (total < (int)req->content_len) {
+        int r = httpd_req_recv(req, body + total, req->content_len - total);
+        if (r == HTTPD_SOCK_ERR_TIMEOUT) continue;
+        if (r <= 0) return ESP_FAIL;
+        total += r;
+    }
+    body[total] = '\0';
+    char host[100] = "", port_txt[16] = "";
+    httpd_query_key_value(body, "host", host, sizeof(host));
+    httpd_query_key_value(body, "port", port_txt, sizeof(port_txt));
+    url_decode(host);
+    url_decode(port_txt);
+    char *h = host;
+    while (*h == ' ') h++;
+    for (char *e = h + strlen(h); e > h && e[-1] == ' '; ) *--e = '\0';
+    int port = port_txt[0] ? atoi(port_txt) : SERVER_PORT_DEFAULT;
+    if (strlen(h) > SERVER_HOST_MAX || port <= 0 || port > 65535 || !device_set_server(h, port))
+        return send_message(req, "Invalid server or port.<br><a href='/server'>Back</a>");
+    char h_html[3 * SERVER_HOST_MAX + 8], msg[320];
+    html_escape(h, h_html, sizeof(h_html));
+    if (h[0]) snprintf(msg, sizeof(msg), "Saved. The device will connect to <b>%s:%d</b>.<br><a href='/server'>Back</a>", h_html, port);
+    else      snprintf(msg, sizeof(msg), "Saved. ThingsBoard connection is off.<br><a href='/server'>Back</a>");
+    return send_message(req, msg);
+}
+
 static esp_err_t handle_upload_page(httpd_req_t *req)
 {
     ota_info_t i;
@@ -226,6 +281,7 @@ void web_start(void)
     if (server) return;
     httpd_config_t c = HTTPD_DEFAULT_CONFIG();
     c.stack_size = 8192;
+    c.max_uri_handlers = 12;
     c.core_id = 0;
     c.lru_purge_enable = true;
     if (httpd_start(&server, &c) != ESP_OK) { ESP_LOGE(TAG, "Khong mo duoc web server"); return; }
@@ -237,6 +293,8 @@ void web_start(void)
         { .uri = "/update",   .method = HTTP_POST, .handler = handle_update },
         { .uri = "/wifi.json", .method = HTTP_GET, .handler = handle_view_json },
         { .uri = "/rollback", .method = HTTP_POST, .handler = handle_rollback },
+        { .uri = "/server",   .method = HTTP_GET,  .handler = handle_server_page },
+        { .uri = "/server",   .method = HTTP_POST, .handler = handle_save_server },
     };
     for (size_t i = 0; i < sizeof(routes) / sizeof(routes[0]); i++) httpd_register_uri_handler(server, &routes[i]);
     ESP_LOGI(TAG, "Web server da chay");

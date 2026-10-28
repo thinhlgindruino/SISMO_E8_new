@@ -6,9 +6,11 @@
  *   màn hình báo 0x41 = thả tay (bỏ qua thay đổi còn sót IGNORE_AFTER_RELEASE_MS ngay sau đó);
  *   dự phòng: quá RELEASE_TIMEOUT_MS không thấy đổi -> coi như đã thả. Giữ đủ SISMO_HOLD_MS -> 0026.
  * - PASSWORD_TABLE: mỗi mật khẩu mở 1 trang cài đặt; thêm mật khẩu mới chỉ cần thêm 1 dòng.
- * - Trang 0027: icon mạng ghi lại khi đổi + làm mới mỗi 2 s; không bật AP khi động cơ đang chạy;
- *   rời trang quá 1 s mà vẫn đang cấu hình -> tắt AP.
- * - Trang 0028: bấm nút đổi MODE WIFI / MODE LOCAL, lưu settings.json, ghi icon 0x1041.
+ * - Trang 0027: icon ONLINE khi đang nói chuyện được với server ThingsBoard (net_server_online, cloud báo), không
+ *   thì OFFLINE dù có mạng; ghi lại khi đổi + làm mới mỗi 2 s; không bật AP khi động cơ đang chạy; rời trang quá 1 s
+ *   mà vẫn đang cấu hình -> tắt AP.
+ * - Trang 0028: bấm nút đổi vòng MODE WIFI -> MODE LAN -> MODE LOCAL, lưu settings.json, ghi icon 0x1041 (= giá trị
+ *   control_mode: 0 WIFI, 1 LOCAL, 2 LAN), network đổi mạng đang dùng ngay (net_apply_link_mode).
  * - Trang 0029: "E8 CM8 - Statut" là trạng thái THẺ (ghi mỗi 300 ms): Accès libre-service (chế độ
  *   test) -> luôn connecté; Accès badgeuse -> connecté khi 2 dây thẻ của CM8 đang chập (thanh ghi 18 = 1)
  *   và CM8 còn trả lời, ngược lại déconnecté.
@@ -92,11 +94,8 @@ static void clear_password(void)
 
 static uint16_t network_icon(net_state_t t)
 {
-    switch (t) {
-    case NET_CONFIG: return (uint16_t)(NET_ICON_CONFIG_BASE + device_get_language());
-    case NET_ONLINE: return NET_ICON_ONLINE;
-    default:         return NET_ICON_OFFLINE;
-    }
+    if (t == NET_CONFIG) return (uint16_t)(NET_ICON_CONFIG_BASE + device_get_language());
+    return net_server_online() ? NET_ICON_ONLINE : NET_ICON_OFFLINE;
 }
 
 static void on_sismo(int page, const hmi_event_t *e)
@@ -161,7 +160,7 @@ static void open_factory_settings(void)
 typedef struct { const char *password; const char *name; void (*open)(void); } password_entry_t;
 static const password_entry_t PASSWORD_TABLE[] = {
     { "74700",  "cai dat WiFi",                    open_wifi_settings },
-    { "74710",  "che do WIFI / LOCAL",             open_mode_settings },
+    { "74710",  "che do WIFI / LAN / LOCAL",       open_mode_settings },
     { "74766",  "the + ngon ngu",                  open_access_settings },
     { "200816", "Mode / Timer / Ratio / Manual",   open_factory_settings },
 };
@@ -236,20 +235,23 @@ static void on_settings_button(int page)
 
 static void show_mode(void)
 {
-    hmi_write(ADDR_MODE_ICON, device_get_control_mode() == CONTROL_MODE_WIFI ? 0 : 1);
+    hmi_write(ADDR_MODE_ICON, (uint16_t)device_get_control_mode());
 }
 
 static void on_mode_button(int page)
 {
     if (page != PAGE_MODE) return;
-    control_mode_t m = (device_get_control_mode() == CONTROL_MODE_WIFI) ? CONTROL_MODE_LOCAL : CONTROL_MODE_WIFI;
+    control_mode_t cur = device_get_control_mode();
+    control_mode_t m = cur == CONTROL_MODE_WIFI ? CONTROL_MODE_LAN : cur == CONTROL_MODE_LAN ? CONTROL_MODE_LOCAL
+                                                                                            : CONTROL_MODE_WIFI;
     device_set_control_mode(m);
     show_mode();
-    if (m == CONTROL_MODE_WIFI)
-        log_send("   [CHE DO] -> MODE WIFI: chi cho dong co chay khi ONLINE (hien tai: %s)",
-                 net_state_name(net_get_state()));
+    net_apply_link_mode();
+    if (m == CONTROL_MODE_LOCAL)
+        log_send("   [CHE DO] -> MODE LOCAL: dong co chay khong can mang, mang: LAN + WiFi");
     else
-        log_send("   [CHE DO] -> MODE LOCAL: dong co chay khong can mang");
+        log_send("   [CHE DO] -> %s: chi dung %s, chi cho dong co chay khi co mang", control_mode_name(m),
+                 m == CONTROL_MODE_LAN ? "LAN" : "WiFi");
 }
 
 static uint16_t card_status_icon(void)

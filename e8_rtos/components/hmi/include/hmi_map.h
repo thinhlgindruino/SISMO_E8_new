@@ -10,13 +10,17 @@
  *   0x1012          chữ "Sismo" trên mọi trang (giữ = giá trị tăng liên tục)
  *   0x1030          ngôn ngữ 0..5 (Français, English, Español, Italiano, Deutsch, Português): mọi icon
  *                   chữ cố định đọc biến này; nút ngôn ngữ trang 0029 tự tăng vòng và báo về ESP32
- *   0x1031          thông báo (Icon 380x70 trang 0000 / 0006 / 0010 / 0011 / 0014): 0 ẩn, LANG_ICON(t, ngôn ngữ)
- *                   với t = MSG_ERR01 (MODE WIFI chưa có mạng), MSG_ERR02 (CM8 mất kết nối / lỗi 2),
- *                   MSG_ERR03 (quá dòng), MSG_ERR04 (quá áp), MSG_BADGE ("Veuillez badger svp")
+ *   0x1031          thông báo, dải bo tròn 2 đầu 460x70 ở x 70, y 230 (trang 0000 / 0006 / 0010 / 0011 / 0014): 0 ẩn,
+ *                   LANG_ICON(t, ngôn ngữ) = 1..30 với t = MSG_ERR01 (MODE WIFI / LAN chưa có mạng), MSG_ERR02 (CM8
+ *                   mất kết nối / lỗi 2), MSG_ERR03 (quá dòng), MSG_ERR04 (quá áp), MSG_BADGE ("Veuillez badger svp").
+ *                   Trang buổi tập: 0x1031 chỉ là phần giữa (x 105, 390x70), thêm MESSAGE_PIECE(k) = 31..62 = mảnh vòng
+ *                   cường độ k = 0..31 (0010 / 0011) hoặc hình minh họa k + 1 (0006 / 0014) nằm dưới, dùng thay cho 0
+ *   0x1033          2 đầu bán nguyệt của dải trên trang buổi tập (x 70 và x 495, 35x70): CAP_PIECE(k) = 1..32 mảnh k,
+ *                   CAP_PILL(k) = 33..64 đầu dải ghép lên mảnh k (xem page_session.c)
  *   0x1032          chạm màn hình trang khởi động 0000 (Variable Button toàn màn hình, giá trị 1, báo về ESP32)
  *   Icon chữ phụ thuộc trạng thái: giá trị = LANG_ICON(trạng thái, ngôn ngữ) = trạng thái * 6 + ngôn ngữ + 1
  *   0x1013 / 0x1040 nút / icon mạng trang 0027: 1 OFFLINE, 2 ONLINE, 3 + ngôn ngữ = Configuration WIFI
- *   0x1014 / 0x1041 nút / icon trang 0028: 0 MODE WIFI, 1 MODE LOCAL
+ *   0x1014 / 0x1041 nút / icon trang 0028: 0 MODE WIFI, 1 MODE LOCAL, 2 MODE LAN (= control_mode)
  *   0x1015 / 0x1042 nút / icon Mode 1..5 (trạng thái 0..4, theo ngôn ngữ)   trang 0030
  *   0x1016 / 0x1043 nút / icon Card Timer / Sismo Timer (0 / 1, theo ngôn ngữ) trang 0030
  *   0x1017 / 0x1044 nút / icon Motor ratio 2..17 (icon 0..15)             trang 0030
@@ -40,7 +44,7 @@
  * Trang: 0000 khởi động, 0001 menu chính, 0002 Durée Exercices (chọn 1..10 phút), 0010 buổi tập
  * Manuel, 0011 buổi tập Durée, 0003..0006 / 0013 / 0014 / 0021..0025 Programmes, 0009 / 0012 / 0015..0020
  * trống (không widget), 0026 mật khẩu,
- * 0027 cài đặt WiFi (74700), 0028 MODE WIFI / LOCAL (74710), 0029 thẻ + ngôn ngữ (74766),
+ * 0027 cài đặt WiFi (74700), 0028 MODE WIFI / LAN / LOCAL (74710), 0029 thẻ + ngôn ngữ (74766),
  * 0030 Mode / Timer / Ratio / Manual (200816).
  */
 #pragma once
@@ -127,6 +131,12 @@
 #define MSG_ERR03                 2
 #define MSG_ERR04                 3
 #define MSG_BADGE                 4
+#define MESSAGE_LAST              30
+#define MESSAGE_PIECES            32
+#define MESSAGE_PIECE(k)          ((uint16_t)(MESSAGE_LAST + 1 + (k)))
+#define ADDR_MESSAGE_CAPS         0x1033
+#define CAP_PIECE(k)              ((uint16_t)(1 + (k)))
+#define CAP_PILL(k)               ((uint16_t)(1 + MESSAGE_PIECES + (k)))
 #define ADDR_GRID_SLOT            0x1080
 #define ADDR_PROG_PARAM_X         0x2020
 #define ADDR_PROG_PARAM           0x2030

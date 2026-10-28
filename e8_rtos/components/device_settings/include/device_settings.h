@@ -5,7 +5,9 @@
  *   /spiffs/wifi.json       {"ssid": ..., "password": ...}    <- network (dùng chung vùng SPIFFS)
  *
  * Cài đặt (khóa JSON | trang | giá trị | mặc định):
- *   control_mode    74710   CONTROL_MODE_WIFI (phải ONLINE mới cho chạy) / CONTROL_MODE_LOCAL   LOCAL
+ *   control_mode    74710   CONTROL_MODE_WIFI (chỉ dùng WiFi, phải có mạng mới cho chạy)
+ *                           / CONTROL_MODE_LAN (chỉ dùng LAN, phải có mạng mới cho chạy)
+ *                           / CONTROL_MODE_LOCAL (không cần mạng; có LAN thì dùng LAN, không thì WiFi)  LOCAL
  *   access_mode     74766   ACCESS_FREE (libre-service = chế độ test, không quan tâm thẻ)
  *                           / ACCESS_CARD (badgeuse, phải có thẻ mới chạy)                    FREE
  *   card_timer      200816  CARD_TIMER_BADGEUSE (mất thẻ -> dừng + báo lỗi)
@@ -32,7 +34,7 @@
 
 #define STORAGE_BASE              "/spiffs"
 
-typedef enum { CONTROL_MODE_WIFI = 0, CONTROL_MODE_LOCAL = 1 } control_mode_t;
+typedef enum { CONTROL_MODE_WIFI = 0, CONTROL_MODE_LOCAL = 1, CONTROL_MODE_LAN = 2 } control_mode_t;
 typedef enum { ACCESS_FREE = 0, ACCESS_CARD = 1 } access_mode_t;
 typedef enum { CARD_TIMER_BADGEUSE = 0, CARD_TIMER_SISMO = 1 } card_timer_t;
 
@@ -43,6 +45,7 @@ typedef enum { CARD_TIMER_BADGEUSE = 0, CARD_TIMER_SISMO = 1 } card_timer_t;
 #define LANGUAGE_COUNT            6
 #define SERVER_HOST_MAX           63
 #define SERVER_PORT_DEFAULT       1883
+#define SETTING_NAME_MAX          3
 
 void           device_settings_start(void);
 bool           device_storage_ok(void);

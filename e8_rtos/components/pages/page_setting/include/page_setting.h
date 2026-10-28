@@ -4,12 +4,12 @@
  * Task "setting" (ưu tiên 3):
  *   - Chạm "Sismo" ở trang bất kỳ        -> về trang chính ngay
  *   - Giữ "Sismo" 2 s                    -> trang mật khẩu (0026)
- *   - Nhập 74700                         -> trang cài đặt WiFi (0027): hiện ONLINE / OFFLINE hiện tại
+ *   - Nhập 74700                         -> trang cài đặt WiFi (0027): ONLINE = đang nối được server ThingsBoard
  *       bấm ONLINE / OFFLINE             -> "Configuration WIFI", ESP32 phát AP + web cấu hình
  *       bấm "Configuration WIFI"         -> tắt AP, về trạng thái hiện tại
  *       Submit trên web (đúng / sai)     -> lưu wifi.json, tắt AP, màn hình về trang 0, khởi động lại
  *       rời trang khi đang cấu hình      -> tắt AP
- *   - Nhập 74710                         -> trang MODE (0028): bấm đổi MODE WIFI / MODE LOCAL (lưu flash)
+ *   - Nhập 74710                         -> trang MODE (0028): bấm đổi vòng MODE WIFI / LAN / LOCAL (lưu flash)
  *   - Nhập 74766                         -> trang thẻ (0029): Accès libre-service (chế độ test, luôn
  *                                           connecté) / Accès badgeuse (connecté = đang có thẻ)
  *   - Nhập 200816                        -> trang 0030: Mode 1..5, Card / Sismo Timer, Motor ratio 2..17,

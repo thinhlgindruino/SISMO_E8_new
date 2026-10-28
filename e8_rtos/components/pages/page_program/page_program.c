@@ -17,7 +17,8 @@
  * Màn hình chỉ vẽ lại widget có giá trị đổi, theo thứ tự widget: widget nằm dưới đổi mà widget nằm trên
  * không đổi thì widget trên bị che. Vì vậy hình minh họa được cắt thành 4 phần không đè lên đồng hồ (UI),
  * còn trục biểu đồ (0x1052) đè lên vòng cường độ: lúc vào bài ghi vòng cường độ = 0 (ẩn), lần đọc
- * parameterAddr đầu tiên (sau PARAM_DELAY_MS) mới ghi mức thật.
+ * parameterAddr đầu tiên (sau PARAM_DELAY_MS) mới ghi mức thật. Mỗi lần ghi hình minh họa (0x1050) báo luôn
+ * page_session_set_illus() để thông báo lỗi (nằm đè lên hình) biết phần hình bên dưới nó.
  *
  * Chạy bài (trạng thái IDLE -> COUNTDOWN -> RUN <-> PAUSE):
  *   ▶ lúc IDLE hoặc tạm dừng: bíp BEEP_COUNT lần cách BEEP_INTERVAL_MS rồi chạy / chạy tiếp (lúc bíp biểu
@@ -188,9 +189,15 @@ static void write_time(int seconds)
     drawn_seconds = seconds;
 }
 
+static void write_illus(int illus)
+{
+    page_session_set_illus(illus);
+    hmi_write(ADDR_PROG_ILLUS, (uint16_t)illus);
+}
+
 static void show_illus(int sub)
 {
-    hmi_write(ADDR_PROG_ILLUS, info()->subs[sub].illus);
+    write_illus(info()->subs[sub].illus);
     drawn_sub = sub;
 }
 
@@ -292,7 +299,7 @@ static void show_program(void)
     int title = program < FIRST_PROPRIO ? program * PROGRAM_LEVELS + lv + 1 : FIRST_PROPRIO * PROGRAM_LEVELS + (program - FIRST_PROPRIO) + 1;
     reset_run();
     build_bars();
-    hmi_write(ADDR_PROG_ILLUS, p->subs[0].illus);
+    write_illus(p->subs[0].illus);
     drawn_sub = 0;
     title_number = title;
     hmi_write(ADDR_PROG_TITLE, TITLE_NONE);
@@ -371,7 +378,7 @@ static void stop_run(const char *why)
         set_bar_icon((uint16_t)(ICON_PROFILE_GREEN_BASE + info()->profile[prog_level()].chart));
         drawn_comb = -1;
     }
-    hmi_write(ADDR_PROG_ILLUS, info()->subs[0].illus);
+    write_illus(info()->subs[0].illus);
     drawn_sub = 0;
     hmi_write(ADDR_PROG_LEVEL, bar_level[0]);
     drawn_level = bar_level[0];

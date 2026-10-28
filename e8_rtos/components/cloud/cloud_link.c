@@ -7,8 +7,9 @@
  * - Server từ chối (CONNACK 4 / 5) -> báo LINK_EV_REFUSED; cloud.c tự đóng kết nối và đổi cách đăng nhập.
  * - Gửi bằng esp_mqtt_client_enqueue (không chờ mạng); task MQTT của esp-mqtt chạy core 0. Tin trong hàng đợi đi sau tối đa
  *   CONFIG_MQTT_POLL_READ_TIMEOUT_MS (sdkconfig: 100 ms, mặc định 1000 ms làm OTA chậm ~1 s / khúc).
- * - Dừng client (link_close) và subscribe có thể phải chờ task esp-mqtt vài giây (đang chờ thử lại / đang mở kết nối
- *   tới 10 s) -> task gọi tạm rời watchdog trong lúc chờ rồi đăng ký lại, không bị watchdog reset máy.
+ * - Dừng client (link_close), subscribe và cả enqueue đều lấy khóa của esp-mqtt, có thể phải chờ task esp-mqtt vài
+ *   giây (đang chờ thử lại / đang mở kết nối / đang gửi khi mạng chập chờn, tới 10 s) -> task gọi tạm rời watchdog
+ *   trong lúc chờ rồi đăng ký lại, không bị watchdog reset máy.
  * - Log lỗi kết nối của esp-mqtt / esp-tls / transport (dòng đỏ mỗi lần rớt mạng hoặc thử lại) bị tắt; cloud.c tự in
  *   1 dòng [CLOUD] dễ hiểu cho mỗi lần mất / có lại kết nối.
  */
@@ -141,7 +142,10 @@ void link_close(void)
 bool link_publish(const char *topic, const void *data, int len, int qos)
 {
     if (!client) return false;
-    return esp_mqtt_client_enqueue(client, topic, data, len, qos, 0, true) >= 0;
+    bool paused = wdt_pause();
+    bool ok = esp_mqtt_client_enqueue(client, topic, data, len, qos, 0, true) >= 0;
+    wdt_resume(paused);
+    return ok;
 }
 
 bool link_subscribe(const char *topic, int qos)

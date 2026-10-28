@@ -32,11 +32,20 @@
  * tắt Xung thì ghi trả cường độ gốc và chờ màn hình nhận (SCREEN_SYNC_MS).
  * Cường độ 1..32 -> tốc độ CM8 0..32 làm tròn xuống số CHẴN (CM8 chỉ đứng yên đúng ở số chẵn).
  *
- * Thông báo trên trang buổi tập (Icon 0x1031, dải dưới hàng nút, theo ngôn ngữ): bị chặn vì CM8 mất kết nối /
+ * Thông báo trên trang buổi tập (Icon 0x1031 ở 1/4 trên màn hình, theo ngôn ngữ): bị chặn vì CM8 mất kết nối /
  * CM8 báo lỗi 2 -> tạm dừng và báo task setting đưa về trang khởi động 0000 (page_session_take_cm8_lost, giống
- * lúc mới bật: ERR.02, chờ CM8); CM8 báo lỗi 3 / 4 -> ERR.03 / 04 tại trang, tới khi CM8 hết lỗi; MODE WIFI chưa
- * có mạng -> ERR.01 tới khi có mạng; Accès badgeuse chưa có thẻ / mất thẻ -> "Veuillez badger svp"
+ * lúc mới bật: ERR.02, chờ CM8); CM8 báo lỗi 3 / 4 -> ERR.03 / 04 tại trang, tới khi CM8 hết lỗi; MODE WIFI /
+ * MODE LAN chưa có mạng -> ERR.01 tới khi có mạng; Accès badgeuse chưa có thẻ / mất thẻ -> "Veuillez badger svp"
  * BADGE_MESSAGE_MS. Rời trang thì xóa thông báo. Thông báo trang khởi động 0000: task setting.
+ * Dải thông báo (bo tròn 2 đầu) nằm đè lên vòng cường độ (0010 / 0011) / hình minh họa (0006 / 0014), gồm 3 Icon:
+ * phần giữa 0x1031 + 2 đầu 0x1033, đứng TRƯỚC Icon bên dưới trong danh sách widget. Màn hình chỉ vẽ lại widget vừa
+ * đổi giá trị và Icon ẩn thì vẽ ảnh nền, nên: không bao giờ ghi 0 (ẩn) trên trang buổi tập; tắt thông báo = ghi
+ * "mảnh" MESSAGE_PIECE(k) / CAP_PIECE(k) (đúng phần vòng cường độ / hình minh họa đang hiện ở chỗ đó, k = 0x1000 hoặc
+ * hình minh họa - 1); hiện thông báo = ghi mảnh, chờ MESSAGE_SETTLE_MS rồi mới ghi thông báo / CAP_PILL(k). Màn hình
+ * chỉ so giá trị lúc vẽ, ghi 2 giá trị liền nhau mà giá trị sau trùng giá trị cũ thì nó không vẽ lại -> phải để mảnh
+ * kịp vẽ trước. Phần bên dưới đổi (vd. giữ nút + / -: vòng cường độ vẽ đè lên dải) -> ghi mảnh mới, dải tạm ẩn, đứng
+ * yên đủ MESSAGE_SETTLE_MS thì hiện lại.
+ * Hình minh họa hiện tại do task program báo qua page_session_set_illus().
  *
  * Thông số: giới hạn dòng 3,70 A,
  * PREPARE_TIMEOUT_MS chờ CM8 về 0 trước lần chạy đầu, PAUSE_SCREEN_ON_ERROR: CM8 lỗi / mất kết nối
@@ -66,6 +75,8 @@
 #define PULSE_STEP_MS             300
 #define SCREEN_SYNC_MS            600
 #define SESSION_PERIOD_MS         50
+#define MESSAGE_SETTLE_MS         300
+#define MESSAGE_UNKNOWN           0xFFFF
 #define TIME_SETTLE_MS            300
 #define DURATION_MIN_MIN          1
 #define DURATION_MIN_MAX          10
@@ -202,6 +213,15 @@ static void update_intensity(const hmi_data_t *d)
 }
 
 static bool    net_alert = false, cm8_alert = false;
+static volatile int illus_shown = 1;
+
+void page_session_set_illus(int illus) { illus_shown = illus; }
+
+static int message_under(const hmi_data_t *d)
+{
+    if (d->page == PAGE_PROGRAM_X || d->page == PAGE_PROGRAM) return clamp(illus_shown - 1, 0, MESSAGE_PIECES - 1);
+    return clamp(d->vars[VAR_INTENSITY], 0, MESSAGE_PIECES - 1);
+}
 static volatile bool cm8_lost = false;
 
 bool page_session_take_cm8_lost(void)
@@ -220,31 +240,58 @@ static int cm8_message(const motor_status_t *t)
     return MSG_NONE;
 }
 
+static void write_message_pieces(int under)
+{
+    hmi_write(ADDR_MESSAGE, MESSAGE_PIECE(under));
+    hmi_write(ADDR_MESSAGE_CAPS, CAP_PIECE(under));
+}
+
 static void update_message(const hmi_data_t *d, bool session_page, const motor_status_t *t)
 {
-    static int page_prev = -1;
-    static uint16_t written = 0xFFFF;
+    static int page_prev = -1, under_written = -1;
+    static uint16_t mid = MESSAGE_UNKNOWN;
+    static int64_t settle_from = 0;
     if (d->page != page_prev) {
         net_alert = cm8_alert = false;
         badge_until = 0;
         bool leaving_session = page_prev >= 0 && page_prev != PAGE_STARTUP;
         page_prev = d->page;
+        mid = MESSAGE_UNKNOWN;
+        under_written = -1;
         if (!session_page) {
             if (leaving_session && d->page != PAGE_STARTUP) hmi_write(ADDR_MESSAGE, MESSAGE_HIDDEN);
-            written = 0xFFFF;
             return;
         }
-        written = 0xFFFF;
     }
     if (!session_page || !hmi_is_linked(d)) return;
     int msg = MSG_NONE;
     if (cm8_alert)                    msg = cm8_message(t);
     if (msg == MSG_NONE && net_alert) msg = MSG_ERR01;
     if (msg == MSG_NONE && ms_now() < badge_until) msg = MSG_BADGE;
-    uint16_t v = msg == MSG_NONE ? MESSAGE_HIDDEN : LANG_ICON(msg, device_get_language());
-    if (v != written) {
-        hmi_write(ADDR_MESSAGE, v);
-        written = v;
+    int under = message_under(d);
+    int64_t now = ms_now();
+    if (under_written < 0) {
+        under_written = under;
+    } else if (under != under_written) {
+        under_written = under;
+        write_message_pieces(under);
+        mid = MESSAGE_PIECE(under);
+        settle_from = now;
+    }
+    if (msg != MSG_NONE) {
+        uint16_t v = LANG_ICON(msg, device_get_language());
+        if (mid == MESSAGE_UNKNOWN) {
+            write_message_pieces(under);
+            mid = MESSAGE_PIECE(under);
+            settle_from = now;
+        } else if (mid != v && now - settle_from >= MESSAGE_SETTLE_MS) {
+            hmi_write(ADDR_MESSAGE, v);
+            hmi_write(ADDR_MESSAGE_CAPS, CAP_PILL(under));
+            mid = v;
+        }
+    } else if (mid != MESSAGE_UNKNOWN && mid <= MESSAGE_LAST) {
+        write_message_pieces(under);
+        mid = MESSAGE_PIECE(under);
     }
 }
 
@@ -316,7 +363,8 @@ static void task_session(void *arg)
             last_net_block_ms = ms_now();
             request_pause(on_program);
             net_alert = true;
-            log_send("   [CHE DO] MODE WIFI nhung chua co mang (%s) -> khong cho dong co chay, tam dung",
+            log_send("   [CHE DO] %s nhung chua co mang (%s) -> khong cho dong co chay, tam dung",
+                     control_mode_name(device_get_control_mode()),
                      net_state_name(net_get_state()));
         }
 

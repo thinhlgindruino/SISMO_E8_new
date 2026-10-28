@@ -1,5 +1,5 @@
 /*
- * network.h - Kết nối mạng WiFi cho E8+
+ * network.h - Kết nối mạng WiFi / LAN cho E8+
  *
  * - Chế độ thường (STA): khởi động lên tự kết nối WiFi đã lưu trong /spiffs/wifi.json.
  *   5 lần đầu thử lại mỗi 2 s (DANG KET NOI), sau đó báo OFFLINE nhưng vẫn thử lại mỗi 15 s.
@@ -12,9 +12,17 @@
  * - net_set_before_restart_hook(): hàm được gọi ngay trước khi khởi động lại sau Submit / OTA
  *   (page_setting dùng để đưa màn hình về trang 0).
  *
- * - LAN (board WT32-ETH01, chip LAN8720): chạy song song với WiFi, lấy IP bằng DHCP. Cắm dây LAN có IP -> ONLINE
- *   qua LAN và LAN được ưu tiên (route_prio NET_ETH_ROUTE_PRIO > WiFi 100); rút dây -> dùng lại WiFi nếu có.
+ * - LAN (board WT32-ETH01, chip LAN8720), lấy IP bằng DHCP. Mạng nào được dùng theo chế độ trang 74710
+ *   (device_settings control_mode), net_apply_link_mode() áp dụng ngay khi đổi:
+ *     MODE WIFI  -> chỉ WiFi (tắt LAN)          MODE LAN -> chỉ LAN (không kết nối WiFi)
+ *     MODE LOCAL -> cả hai, LAN được ưu tiên (route_prio NET_ETH_ROUTE_PRIO > WiFi 100), rút dây thì dùng WiFi.
+ *   ONLINE = mạng đang được dùng có IP. Chế độ cấu hình (AP) vẫn bật được ở mọi chế độ. Bật / tắt LAN (esp_eth_start
+ *   chờ PHY tự dò tốc độ tới ~4 s) chạy trong task "net_mode" riêng, không làm task gọi bị watchdog.
+ * - net_link_to(host): mạng thật sự dùng để tới host (IP cùng dải với WiFi / LAN thì đi mạng đó, còn lại theo ưu
+ *   tiên LAN > WiFi) + IP của máy trên mạng đó; cloud báo "network" / "ip" theo hàm này.
  *   Board không có LAN (khởi tạo lỗi) -> chỉ báo log, chạy WiFi như cũ. net_get_link(): mạng đang dùng.
+ * - net_set_server_online() / net_server_online(): cloud báo đang nói chuyện được với server ThingsBoard (MQTT);
+ *   trang 74700 hiện ONLINE theo cờ này (có mạng mà không vào được server vẫn là OFFLINE).
  * - Chân LAN của WT32-ETH01: RMII cố định (TXD0 19, TX_EN 21, TXD1 22, RXD0 25, RXD1 26, CRS_DV 27), MDC 23, MDIO 18,
  *   clock 50 MHz vào GPIO0, GPIO16 bật bộ dao động, PHY địa chỉ 1.
  * - NET_ETH_STATIC_IP: rỗng = DHCP; đặt vd. "192.168.137.50" -> cắm dây là dùng IP tĩnh đó (+ GW / MASK), để thử LAN
@@ -61,6 +69,11 @@ int net_get_rssi(void);
 net_link_t net_get_link(void);
 const char *net_link_name(net_link_t l);
 void net_get_info(char *ssid, size_t n_ssid, char *ip, size_t n_ip);
+void net_apply_link_mode(void);
+net_link_t net_link_to(const char *host, char *ip, size_t n_ip);
+const char *net_link_mode_name(void);
+void net_set_server_online(bool online);
+bool net_server_online(void);
 
 bool net_save_wifi(const char *ssid, const char *pass);
 void net_clear_wifi(void);

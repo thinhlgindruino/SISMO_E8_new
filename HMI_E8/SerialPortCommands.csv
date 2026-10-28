@@ -3,10 +3,10 @@ Page,WidgetName,Name    ,Header,Length,Cmd,Addr,Data,CRC
 -,SystemFunction,Brightness CTRL,5AA5,07,10,7001,003F,EED3
 -,SystemFunction,Year,5AA5,07,10,7002,001A,DF08
 -,SystemFunction,Month,5AA5,07,10,7003,000A,8F04
--,SystemFunction,Day,5AA5,07,10,7004,0014,BECD
--,SystemFunction,Hour,5AA5,07,10,7005,0010,EECE
--,SystemFunction,Minute,5AA5,07,10,7006,000C,1F07
--,SystemFunction,Second,5AA5,07,10,7007,001B,0EC9
+-,SystemFunction,Day,5AA5,07,10,7004,001C,BF0B
+-,SystemFunction,Hour,5AA5,07,10,7005,000A,6F05
+-,SystemFunction,Minute,5AA5,07,10,7006,0028,1F1C
+-,SystemFunction,Second,5AA5,07,10,7007,0038,4F10
 -,SystemFunction,Refresh time,5AA5,07,10,7008,0000,7EC1
 -,SystemFunction,Play music,5AA5,07,10,700A,0000,DF01
 -,SystemFunction,Volume CTRL,5AA5,07,10,700B,0010,8F0D
@@ -21,8 +21,6 @@ Page1,icon_1,icon_1,5AA5,07,10,1030,0000,E10C
 Page1,icon_2,icon_2,5AA5,07,10,1030,0000,E10C
 Page1,icon_3,icon_3,5AA5,07,10,1030,0000,E10C
 Page2,icon_0,icon_0,5AA5,07,10,1020,0000,E0C9
-Page2,icon_1,icon_1,5AA5,07,10,1030,0000,E10C
-Page3,icon_0,icon_0,5AA5,07,10,1030,0000,E10C
 Page3,icon_1,icon_1,5AA5,07,10,1030,0000,E10C
 Page3,icon_2,icon_2,5AA5,07,10,1030,0000,E10C
 Page3,icon_3,icon_3,5AA5,07,10,1030,0000,E10C
@@ -38,6 +36,9 @@ Page5,icon_0,icon_0,5AA5,07,10,1030,0000,E10C
 Page5,icon_1,icon_1,5AA5,07,10,1030,0000,E10C
 Page5,icon_2,icon_2,5AA5,07,10,1030,0000,E10C
 Page5,icon_3,icon_3,5AA5,07,10,1030,0000,E10C
+Page6,icon_18,icon_18,5AA5,07,10,1033,0000,110C
+Page6,icon_19,icon_19,5AA5,07,10,1031,0000,B0CC
+Page6,icon_20,icon_20,5AA5,07,10,1033,0000,110C
 Page6,icon_0,icon_0,5AA5,07,10,1050,0000,E112
 Page6,icon_14,icon_14,5AA5,07,10,1050,0000,E112
 Page6,icon_15,icon_15,5AA5,07,10,1050,0000,E112
@@ -57,8 +58,9 @@ Page6,icon_10,icon_10,5AA5,07,10,105D,0000,70D1
 Page6,icon_12,icon_12,5AA5,07,10,105D,0000,70D1
 Page6,icon_13,icon_13,5AA5,07,10,105D,0000,70D1
 Page6,progress_0,progress_0,5AA5,07,10,105A,0000,C110
-Page6,icon_18,icon_18,5AA5,07,10,1031,0000,B0CC
-Page7,icon_0,icon_0,5AA5,07,10,1030,0000,E10C
+Page10,icon_3,icon_3,5AA5,07,10,1033,0000,110C
+Page10,icon_4,icon_4,5AA5,07,10,1031,0000,B0CC
+Page10,icon_5,icon_5,5AA5,07,10,1033,0000,110C
 Page10,icon_0,icon_0,5AA5,07,10,1000,0000,E103
 Page10,icon_1,icon_1,5AA5,07,10,1001,0000,B0C3
 Page10,uitimer_0,preset_Addr,5AA5,07,10,1002,012C,408E
@@ -66,16 +68,15 @@ Page10,uitimer_0,calc_Addr,5AA5,07,10,1003,003C,1112
 Page10,uitimer_0,ctrl_Addr,5AA5,07,10,1001,0000,B0C3
 Page10,icon_2,icon_2,5AA5,07,10,1005,0000,F102
 Page10,pngNumber_0,pngNumber_0,5AA5,07,10,1048,0000,6115
-Page10,icon_3,icon_3,5AA5,07,10,1030,0000,E10C
-Page10,icon_4,icon_4,5AA5,07,10,1031,0000,B0CC
+Page11,icon_3,icon_3,5AA5,07,10,1033,0000,110C
+Page11,icon_4,icon_4,5AA5,07,10,1031,0000,B0CC
+Page11,icon_5,icon_5,5AA5,07,10,1033,0000,110C
 Page11,icon_0,icon_0,5AA5,07,10,1000,0000,E103
 Page11,icon_1,icon_1,5AA5,07,10,1001,0000,B0C3
 Page11,uitimer_0,preset_Addr,5AA5,07,10,1002,012C,408E
 Page11,uitimer_0,calc_Addr,5AA5,07,10,1003,003C,1112
 Page11,uitimer_0,ctrl_Addr,5AA5,07,10,1001,0000,B0C3
 Page11,icon_2,icon_2,5AA5,07,10,1005,0000,F102
-Page11,icon_3,icon_3,5AA5,07,10,1030,0000,E10C
-Page11,icon_4,icon_4,5AA5,07,10,1031,0000,B0CC
 Page13,icon_0,icon_0,5AA5,07,10,1080,0000,E0EB
 Page13,icon_1,icon_1,5AA5,07,10,1081,0000,B12B
 Page13,icon_2,icon_2,5AA5,07,10,1082,0000,412B
@@ -92,6 +93,9 @@ Page13,icon_12,icon_12,5AA5,07,10,108C,0000,20E8
 Page13,icon_13,icon_13,5AA5,07,10,108D,0000,7128
 Page13,icon_14,icon_14,5AA5,07,10,108E,0000,8128
 Page13,icon_15,icon_15,5AA5,07,10,108F,0000,D0E8
+Page14,icon_18,icon_18,5AA5,07,10,1033,0000,110C
+Page14,icon_19,icon_19,5AA5,07,10,1031,0000,B0CC
+Page14,icon_20,icon_20,5AA5,07,10,1033,0000,110C
 Page14,icon_0,icon_0,5AA5,07,10,1050,0000,E112
 Page14,icon_14,icon_14,5AA5,07,10,1050,0000,E112
 Page14,icon_15,icon_15,5AA5,07,10,1050,0000,E112
@@ -110,7 +114,6 @@ Page14,icon_10,icon_10,5AA5,07,10,105D,0000,70D1
 Page14,icon_12,icon_12,5AA5,07,10,105D,0000,70D1
 Page14,icon_13,icon_13,5AA5,07,10,105D,0000,70D1
 Page14,progress_0,progress_0,5AA5,07,10,105A,0000,C110
-Page14,icon_18,icon_18,5AA5,07,10,1031,0000,B0CC
 Page21,icon_0,icon_0,5AA5,07,10,1030,0000,E10C
 Page21,icon_1,icon_1,5AA5,07,10,1030,0000,E10C
 Page21,icon_2,icon_2,5AA5,07,10,1030,0000,E10C

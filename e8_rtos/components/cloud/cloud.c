@@ -11,8 +11,16 @@
  * - Điều khiển từ xa = làm giống người bấm: trang 6 / 14 gửi nút Play / Stop cho page_program; trang 10 / 11 ghi
  *   0x1001 (Play / Pause) hoặc làm như nút Stop của trang (0x1000 = 0, 0x1001 = 0, về trang trước).
  * - cloud.json (SPIFFS): sessions_total, gói OTA đang chờ khởi động lại (ota_target / ota_checksum), gói OTA đã
- *   lỗi (failed_checksum) để không tải lại mãi.
+ *   lỗi (failed_checksum) để không tải lại mãi, gói OTA đã cài xong lần gần nhất (done_checksum).
+ * - Gói đang gán trên ThingsBoard = gói đã cài xong (done_checksum) mà máy đang chạy bản khác -> máy đã được nạp tay
+ *   (USB / web) sau lần OTA đó -> không tự tải lại gói cũ đè lên; khách chọn gói khác (hoặc chọn lại lúc máy đang
+ *   online) thì vẫn cập nhật như thường.
+ * - Buổi tập chỉ được tính (event session_start / session_end, sessions_total) khi đồng hồ đã thật sự đếm xuống ít
+ *   nhất 1 s lúc đang RUN; bấm ▶ mà bị chặn (ERR.01, thẻ, CM8) rồi thoát ra thì không tính.
  * - Đổi mạng (LAN <-> WiFi, đổi IP) khi chưa ONLINE -> kết nối lại ngay, không chờ esp-mqtt hết hạn thử lại.
+ *   "network" / "ip" = mạng thật sự dùng để tới server (net_link_to: server cùng dải IP với WiFi thì là WiFi dù LAN
+ *   đang cắm).
+ * - Mỗi lần đổi trạng thái báo network (net_set_server_online): trang 74700 chỉ hiện ONLINE khi cloud ONLINE.
  * - OTA: mỗi khúc chờ trả lời FW_CHUNK_TIMEOUT_MS, gửi lại tối đa FW_CHUNK_TRIES lần; mất kết nối giữa chừng
  *   -> kết nối lại thì xin tiếp khúc đang dở.
  */
@@ -112,7 +120,7 @@ static int  request_id = 0;
 static int  fw_live_request = -1;
 
 static int  sessions_total = 0;
-static char ota_target[32] = "", ota_checksum[65] = "", failed_checksum[65] = "";
+static char ota_target[32] = "", ota_checksum[65] = "", failed_checksum[65] = "", done_checksum[65] = "";
 
 static status_t   last_status;
 static bool       status_valid = false;
@@ -130,7 +138,9 @@ static struct {
     int         level;
     int         planned_s;
     int         last_remaining_s;
+    int         start_remaining_s;
     bool        active;
+    bool        confirmed;
 } session;
 
 static struct {
@@ -151,6 +161,7 @@ static void set_state(cloud_state_t s)
     bool changed = cstate != s;
     cstate = s;
     portEXIT_CRITICAL(&state_lock);
+    net_set_server_online(s == CLOUD_ONLINE);
     if (changed) {
         state_since = ms_now();
         log_send("   [CLOUD] -> %s", cloud_state_name(s));
@@ -217,6 +228,7 @@ static void load_file(void)
     if (cJSON_IsString(it = cJSON_GetObjectItemCaseSensitive(j, "ota_target")))      snprintf(ota_target, sizeof(ota_target), "%s", it->valuestring);
     if (cJSON_IsString(it = cJSON_GetObjectItemCaseSensitive(j, "ota_checksum")))    snprintf(ota_checksum, sizeof(ota_checksum), "%s", it->valuestring);
     if (cJSON_IsString(it = cJSON_GetObjectItemCaseSensitive(j, "failed_checksum"))) snprintf(failed_checksum, sizeof(failed_checksum), "%s", it->valuestring);
+    if (cJSON_IsString(it = cJSON_GetObjectItemCaseSensitive(j, "done_checksum")))   snprintf(done_checksum, sizeof(done_checksum), "%s", it->valuestring);
     cJSON_Delete(j);
 }
 
@@ -227,6 +239,7 @@ static void save_file(void)
     cJSON_AddStringToObject(j, "ota_target", ota_target);
     cJSON_AddStringToObject(j, "ota_checksum", ota_checksum);
     cJSON_AddStringToObject(j, "failed_checksum", failed_checksum);
+    cJSON_AddStringToObject(j, "done_checksum", done_checksum);
     char *txt = cJSON_PrintUnformatted(j);
     cJSON_Delete(j);
     if (txt) { storage_write_text(FILE_CLOUD, txt); cJSON_free(txt); }
@@ -335,7 +348,8 @@ static void publish_attributes(void)
     ota_info_t o;
     ota_get_info(&o);
     char ssid[33] = "", ip[16] = "";
-    net_get_info(ssid, sizeof(ssid), ip, sizeof(ip));
+    net_get_info(ssid, sizeof(ssid), NULL, 0);
+    net_link_t link = net_link_to(host, ip, sizeof(ip));
     cJSON *j = cJSON_CreateObject();
     cJSON_AddStringToObject(j, "model", CLOUD_MODEL);
     cJSON_AddStringToObject(j, "firmware", o.version);
@@ -343,11 +357,11 @@ static void publish_attributes(void)
     cJSON_AddStringToObject(j, "mac", net_mac_text());
     cJSON_AddStringToObject(j, "ip", ip);
     cJSON_AddStringToObject(j, "ssid", ssid);
-    cJSON_AddStringToObject(j, "network", net_link_name(net_get_link()));
+    cJSON_AddStringToObject(j, "network", net_link_name(link));
     add_settings(j, &s);
     cJSON_AddNumberToObject(j, "sessions_total", sessions_total);
     send_json(T_ATTR, j, 1);
-    snprintf(last_net, sizeof(last_net), "%s %s", net_link_name(net_get_link()), ip);
+    snprintf(last_net, sizeof(last_net), "%s %s", net_link_name(link), ip);
     last_settings = s;
     settings_valid = true;
 }
@@ -413,19 +427,25 @@ static void track_session(const status_t *s, bool online)
     bool running = s->state == PROGRAM_RUN || s->state == PROGRAM_COUNTDOWN;
     if (!session.active && running) {
         session.active = true;
+        session.confirmed = false;
         session.kind = s->kind;
         snprintf(session.program, sizeof(session.program), "%s", s->program_name);
         session.level = s->level;
         session.planned_s = s->planned_s;
         session.last_remaining_s = s->remaining_s;
-        if (online) send_event_session(true);
-        log_send("   [CLOUD] Bat dau buoi tap %s %s", session.kind, session.program);
+        session.start_remaining_s = s->remaining_s;
     } else if (session.active) {
         bool same = strcmp(s->kind, session.kind) == 0 && s->state != PROGRAM_IDLE;
         if (same) {
             session.last_remaining_s = s->remaining_s;
+            if (!session.confirmed && s->state == PROGRAM_RUN && s->remaining_s < session.start_remaining_s) {
+                session.confirmed = true;
+                if (online) send_event_session(true);
+                log_send("   [CLOUD] Bat dau buoi tap %s %s", session.kind, session.program);
+            }
         } else {
             session.active = false;
+            if (!session.confirmed) return;
             sessions_total++;
             save_file();
             if (online) { send_event_session(false); publish_attributes(); }
@@ -659,6 +679,11 @@ static void fw_offer(const cJSON *a, bool live)
         log_send("   [CLOUD] Goi OTA %s da loi truoc do -> bo qua (chon lai tren dashboard de thu lai)", v->valuestring);
         return;
     }
+    if (!live && strcmp(done_checksum, cs->valuestring) == 0) {
+        log_send("   [CLOUD] Goi OTA %s da cai xong truoc do, may dang chay v%s (nap tay) -> khong nap lai ban cu",
+                 v->valuestring, o.version);
+        return;
+    }
     if (fw.phase == FW_DOWNLOADING || fw.phase == FW_DOWNLOADED || fw.phase == FW_WAIT_APPLY) ota_upload_abort();
     fw_reset();
     snprintf(fw.title, sizeof(fw.title), "%s", t->valuestring);
@@ -759,6 +784,7 @@ static void fw_report_after_boot(void)
     ota_info_t o;
     ota_get_info(&o);
     if (strcmp(o.version, ota_target) == 0) {
+        snprintf(done_checksum, sizeof(done_checksum), "%s", ota_checksum);
         send_fw_state("UPDATED", NULL);
     } else {
         char why[128];
@@ -928,12 +954,11 @@ static void connection_tick(void)
     }
     static char prev_net[24] = "";
     char ip[16] = "", net[24];
-    net_get_info(NULL, 0, ip, sizeof(ip));
-    snprintf(net, sizeof(net), "%s %s", net_link_name(net_get_link()), ip);
+    snprintf(net, sizeof(net), "%s %s", net_link_name(net_link_to(host, ip, sizeof(ip))), ip);
     bool net_changed = strcmp(net, prev_net) != 0;
     snprintf(prev_net, sizeof(prev_net), "%s", net);
     if (s == CLOUD_OFF || s == CLOUD_WAIT_NETWORK) open_with_token();
-    else if (net_changed && (s == CLOUD_CONNECTING || s == CLOUD_RETRY_LATER)) {
+    else if (net_changed && net_get_link() != NET_LINK_NONE && (s == CLOUD_CONNECTING || s == CLOUD_RETRY_LATER)) {
         log_send("   [CLOUD] Doi mang (%s) -> ket noi lai ngay", net);
         provisioned_once = false;
         open_with_token();
@@ -986,8 +1011,7 @@ static void task_cloud(void *arg)
         settings_t st;
         read_settings(&st);
         char ip[16] = "", net[24];
-        net_get_info(NULL, 0, ip, sizeof(ip));
-        snprintf(net, sizeof(net), "%s %s", net_link_name(net_get_link()), ip);
+        snprintf(net, sizeof(net), "%s %s", net_link_name(net_link_to(host, ip, sizeof(ip))), ip);
         if (!settings_valid || settings_changed(&st, &last_settings) || strcmp(net, last_net) != 0) publish_attributes();
         fw_tick(&s);
     }

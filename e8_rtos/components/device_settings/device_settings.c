@@ -36,11 +36,11 @@ typedef enum { S_CONTROL_MODE, S_ACCESS_MODE, S_CARD_TIMER, S_MOTOR_MODE, S_MOTO
 typedef struct {
     const char *key;
     int min, max, def;
-    const char *names[2];
+    const char *names[SETTING_NAME_MAX];
 } setting_def_t;
 
 static const setting_def_t SETTINGS[S_COUNT] = {
-    [S_CONTROL_MODE] = { "control_mode",   0, 1, CONTROL_MODE_LOCAL,  { "wifi", "local" } },
+    [S_CONTROL_MODE] = { "control_mode",   0, 2, CONTROL_MODE_LOCAL,  { "wifi", "local", "lan" } },
     [S_ACCESS_MODE]  = { "access_mode",    0, 1, ACCESS_FREE,         { "libre-service", "badgeuse" } },
     [S_CARD_TIMER]   = { "card_timer",     0, 1, CARD_TIMER_BADGEUSE, { "badgeuse", "sismo" } },
     [S_MOTOR_MODE]   = { "motor_mode",     MOTOR_MODE_MIN,  MOTOR_MODE_MAX,  3, { NULL, NULL } },
@@ -108,8 +108,8 @@ static void load(void)
         const cJSON *it = cJSON_GetObjectItemCaseSensitive(j, SETTINGS[i].key);
         int v = SETTINGS[i].def;
         if (cJSON_IsString(it) && SETTINGS[i].names[0]) {
-            for (int k = 0; k < 2; k++)
-                if (strcmp(it->valuestring, SETTINGS[i].names[k]) == 0) v = k;
+            for (int k = 0; k < SETTING_NAME_MAX; k++)
+                if (SETTINGS[i].names[k] && strcmp(it->valuestring, SETTINGS[i].names[k]) == 0) v = k;
         } else if (cJSON_IsNumber(it) && valid(i, it->valueint)) {
             v = it->valueint;
         }
@@ -179,7 +179,10 @@ void device_settings_start(void)
              server_host[0] ? server_host : "(chua cai)", server_port);
 }
 
-const char *control_mode_name(control_mode_t m) { return m == CONTROL_MODE_WIFI ? "MODE WIFI" : "MODE LOCAL"; }
+const char *control_mode_name(control_mode_t m)
+{
+    return m == CONTROL_MODE_WIFI ? "MODE WIFI" : m == CONTROL_MODE_LAN ? "MODE LAN" : "MODE LOCAL";
+}
 const char *access_mode_name(access_mode_t m)   { return m == ACCESS_CARD ? "Acces badgeuse" : "Acces libre-service"; }
 const char *card_timer_name(card_timer_t t)     { return t == CARD_TIMER_SISMO ? "Sismo" : "Badgeuse"; }
 

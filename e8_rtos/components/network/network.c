@@ -8,8 +8,12 @@
  * - Trong lúc cấu hình KHÔNG tự thử kết nối lại (mỗi lần thử STA phải quét kênh, làm điện thoại
  *   đang vào AP bị rớt). AP tự theo kênh của router khi STA đang kết nối.
  * - Sự kiện WiFi / IP chạy trong task event loop của ESP-IDF (core 0); trạng thái đọc qua critical section.
- * - LAN: bật GPIO16 (bộ dao động 50 MHz) rồi mới cài driver EMAC + LAN8720; netif "ETH" lấy IP bằng DHCP. ONLINE khi
- *   WiFi hoặc LAN có IP. Khởi tạo LAN lỗi (board không có chip LAN) -> tắt lại GPIO16, bỏ qua, WiFi vẫn chạy.
+ * - LAN: bật GPIO16 (bộ dao động 50 MHz) rồi mới cài driver EMAC + LAN8720; netif "ETH" lấy IP bằng DHCP.
+ *   Khởi tạo LAN lỗi (board không có chip LAN) -> tắt lại GPIO16, bỏ qua, WiFi vẫn chạy.
+ * - Chế độ mạng (link_mode, theo control_mode): use_wifi() / use_eth() quyết định có kết nối WiFi / chạy LAN không.
+ *   MODE LAN: không gọi esp_wifi_connect (WiFi vẫn chạy để phát AP khi cấu hình); MODE WIFI: esp_eth_stop (tắt log
+ *   lỗi gỡ bộ lọc MAC của driver LAN lúc tắt, không in "rút dây" / "mất IP" khi LAN bị tắt chủ động).
+ *   ONLINE khi mạng được dùng có IP. Đổi chế độ lúc đang chạy: ngắt / bật đúng mạng rồi tính lại trạng thái.
  */
 #include <stdio.h>
 #include <string.h>
@@ -56,6 +60,12 @@ static char ip_eth[16] = "";
 static esp_netif_t *netif_eth = NULL;
 static int64_t eth_link_ms = 0;
 static esp_timer_handle_t eth_wait_timer = NULL;
+static esp_eth_handle_t eth_handle = NULL;
+static TaskHandle_t mode_task = NULL;
+static volatile bool mode_pending = false;
+static bool eth_running = false;
+static volatile int link_mode = CONTROL_MODE_LOCAL;
+static volatile bool server_online = false;
 static bool config_active = false;
 static bool fs_ok = false;
 static int  retry_count = 0;
@@ -95,13 +105,24 @@ const char *net_state_name(net_state_t t)
     }
 }
 
+static bool use_wifi(void) { return link_mode != CONTROL_MODE_LAN; }
+static bool use_eth(void)  { return link_mode != CONTROL_MODE_WIFI; }
+
+void net_set_server_online(bool online) { server_online = online; }
+bool net_server_online(void) { return server_online; }
+
+const char *net_link_mode_name(void)
+{
+    return link_mode == CONTROL_MODE_WIFI ? "chi WiFi" : link_mode == CONTROL_MODE_LAN ? "chi LAN" : "LAN + WiFi";
+}
+
 const char *net_ap_name(void) { return ap_name; }
 const char *net_mac_text(void) { return mac_text; }
 
 net_link_t net_get_link(void)
 {
-    if (eth_has_ip) return NET_LINK_LAN;
-    if (sta_has_ip) return NET_LINK_WIFI;
+    if (use_eth() && eth_has_ip) return NET_LINK_LAN;
+    if (use_wifi() && sta_has_ip) return NET_LINK_WIFI;
     return NET_LINK_NONE;
 }
 
@@ -125,14 +146,18 @@ void net_get_info(char *ssid, size_t n_ssid, char *ip, size_t n_ip)
 {
     portENTER_CRITICAL(&lock);
     if (ssid) snprintf(ssid, n_ssid, "%s", saved_ssid);
-    if (ip)   snprintf(ip, n_ip, "%s", eth_has_ip ? ip_eth : ip_sta);
+    if (ip) {
+        net_link_t l = net_get_link();
+        snprintf(ip, n_ip, "%s", l == NET_LINK_LAN ? ip_eth : l == NET_LINK_WIFI ? ip_sta : "");
+    }
     portEXIT_CRITICAL(&lock);
 }
 
 static net_state_t normal_state(void)
 {
-    if (sta_has_ip || eth_has_ip) return NET_ONLINE;
-    if (has_saved_wifi && retry_count < FAST_RETRY_COUNT) return NET_CONNECTING;
+    if (net_get_link() != NET_LINK_NONE) return NET_ONLINE;
+    if (use_wifi() && has_saved_wifi && retry_count < FAST_RETRY_COUNT) return NET_CONNECTING;
+    if (use_eth() && eth_link_up) return NET_CONNECTING;
     return NET_OFFLINE;
 }
 
@@ -256,13 +281,13 @@ void net_finish_config_and_restart(int ms)
     esp_timer_start_once(finish_timer, (uint64_t)ms * 1000);
 }
 
-static void retry_connect(void *arg) { (void)arg; if (!config_active && has_saved_wifi) esp_wifi_connect(); }
+static void retry_connect(void *arg) { (void)arg; if (!config_active && has_saved_wifi && use_wifi()) esp_wifi_connect(); }
 
 static void on_event(void *arg, esp_event_base_t base, int32_t id, void *data)
 {
     (void)arg;
     if (base == WIFI_EVENT && id == WIFI_EVENT_STA_START) {
-        if (has_saved_wifi && !config_active) {
+        if (has_saved_wifi && !config_active && use_wifi()) {
             set_state(NET_CONNECTING);
             esp_wifi_connect();
         }
@@ -273,6 +298,7 @@ static void on_event(void *arg, esp_event_base_t base, int32_t id, void *data)
         ip_sta[0] = '\0';
         portEXIT_CRITICAL(&lock);
         if (config_active || !has_saved_wifi) return;
+        if (!use_wifi()) { set_state(normal_state()); return; }
         if (had_ip) retry_count = 0;
         wifi_event_sta_disconnected_t *e = (wifi_event_sta_disconnected_t *)data;
         retry_count++;
@@ -289,7 +315,7 @@ static void on_event(void *arg, esp_event_base_t base, int32_t id, void *data)
         sta_has_ip = true;
         retry_count = 0;
         ESP_LOGI(TAG, "Da vao WiFi \"%s\", IP %s", saved_ssid, ip_sta);
-        if (!config_active) set_state(NET_ONLINE);
+        if (!config_active) set_state(normal_state());
     } else if (base == ETH_EVENT && id == ETHERNET_EVENT_CONNECTED) {
         eth_link_up = true;
         eth_link_ms = esp_timer_get_time() / 1000;
@@ -310,7 +336,8 @@ static void on_event(void *arg, esp_event_base_t base, int32_t id, void *data)
         portENTER_CRITICAL(&lock);
         ip_eth[0] = '\0';
         portEXIT_CRITICAL(&lock);
-        ESP_LOGW(TAG, "LAN: rut day (link down)%s", sta_has_ip ? " -> dung WiFi" : "");
+        if (!eth_running) return;
+        ESP_LOGW(TAG, "LAN: rut day (link down)%s", use_wifi() && sta_has_ip ? " -> dung WiFi" : "");
         if (!config_active) set_state(normal_state());
     } else if (base == IP_EVENT && id == IP_EVENT_ETH_GOT_IP) {
         ip_event_got_ip_t *e = (ip_event_got_ip_t *)data;
@@ -319,9 +346,10 @@ static void on_event(void *arg, esp_event_base_t base, int32_t id, void *data)
         portEXIT_CRITICAL(&lock);
         eth_has_ip = true;
         ESP_LOGI(TAG, "LAN: IP %s (gateway " IPSTR ")", ip_eth, IP2STR(&e->ip_info.gw));
-        if (!config_active) set_state(NET_ONLINE);
+        if (!config_active) set_state(normal_state());
     } else if (base == IP_EVENT && id == IP_EVENT_ETH_LOST_IP) {
         eth_has_ip = false;
+        if (!eth_running) return;
         ESP_LOGW(TAG, "LAN: mat IP");
         if (!config_active) set_state(normal_state());
     } else if (base == WIFI_EVENT && id == WIFI_EVENT_AP_STACONNECTED) {
@@ -337,7 +365,7 @@ static void eth_wait_log(void *arg)
 {
     (void)arg;
     int64_t waited = esp_timer_get_time() / 1000 - eth_link_ms;
-    if (!eth_link_up || eth_has_ip || waited < NET_ETH_WAIT_LOG_MS / 2) return;
+    if (!eth_running || !eth_link_up || eth_has_ip || waited < NET_ETH_WAIT_LOG_MS / 2) return;
     ESP_LOGW(TAG, "LAN: co day nhung chua co IP sau %lld s (DHCP khong tra loi)", (long long)waited / 1000);
 }
 
@@ -384,10 +412,101 @@ static void eth_start(void)
     esp_eth_ioctl(eth, ETH_CMD_G_MAC_ADDR, m);
     const esp_timer_create_args_t wa = { .callback = eth_wait_log, .name = "eth_wait" };
     if (esp_timer_create(&wa, &eth_wait_timer) == ESP_OK) esp_timer_start_periodic(eth_wait_timer, (uint64_t)NET_ETH_WAIT_LOG_MS * 1000);
-    e = esp_eth_start(eth);
-    ESP_LOGI(TAG, "LAN (LAN8720) %s, MAC " MACSTR ", %s", e == ESP_OK ? "da khoi dong" : "loi khoi dong", MAC2STR(m),
+    eth_handle = eth;
+    ESP_LOGI(TAG, "LAN (LAN8720) san sang, MAC " MACSTR ", %s", MAC2STR(m),
              NET_ETH_STATIC_IP[0] ? "IP tinh " NET_ETH_STATIC_IP : "DHCP");
 #endif
+}
+
+static void eth_run(bool on)
+{
+    if (!eth_handle || on == eth_running) return;
+    static const char *const NOISY[] = { "esp.emac", "esp_eth", "esp_eth.netif.netif_glue", "esp_netif_lwip" };
+    for (size_t i = 0; i < sizeof(NOISY) / sizeof(NOISY[0]); i++)
+        esp_log_level_set(NOISY[i], on ? ESP_LOG_WARN : ESP_LOG_NONE);
+    if (on) {
+        eth_running = true;
+        eth_running = esp_eth_start(eth_handle) == ESP_OK;
+        ESP_LOGI(TAG, "LAN: %s", eth_running ? "bat" : "loi khi bat");
+        return;
+    }
+    eth_running = false;
+    esp_eth_stop(eth_handle);
+    eth_link_up = false;
+    eth_has_ip = false;
+    portENTER_CRITICAL(&lock);
+    ip_eth[0] = '\0';
+    portEXIT_CRITICAL(&lock);
+    ESP_LOGI(TAG, "LAN: tat (MODE WIFI)");
+}
+
+static void apply_link_mode_now(bool boot)
+{
+    if (!boot) ESP_LOGI(TAG, "Che do mang: %s (%s)", control_mode_name(link_mode), net_link_mode_name());
+    eth_run(use_eth());
+    if (boot) return;
+    if (!use_wifi()) {
+        esp_timer_stop(retry_timer);
+        esp_wifi_disconnect();
+    } else if (!config_active && has_saved_wifi && !sta_has_ip) {
+        retry_count = 0;
+        esp_wifi_connect();
+    }
+    if (!config_active) set_state(normal_state());
+}
+
+static void mode_worker(void *arg)
+{
+    bool boot = arg != NULL;
+    do {
+        mode_pending = false;
+        apply_link_mode_now(boot);
+        boot = false;
+    } while (mode_pending);
+    portENTER_CRITICAL(&lock);
+    mode_task = NULL;
+    portEXIT_CRITICAL(&lock);
+    vTaskDelete(NULL);
+}
+
+static void start_mode_worker(bool boot)
+{
+    portENTER_CRITICAL(&lock);
+    bool running = mode_task != NULL;
+    if (running) mode_pending = true;
+    portEXIT_CRITICAL(&lock);
+    if (!running) xTaskCreatePinnedToCore(mode_worker, "net_mode", 4096, boot ? (void *)1 : NULL, 4, &mode_task, 0);
+}
+
+void net_apply_link_mode(void)
+{
+    link_mode = device_get_control_mode();
+    if (!config_active) set_state(normal_state());
+    start_mode_worker(false);
+}
+
+static bool same_subnet(esp_netif_t *n, uint32_t addr)
+{
+    esp_netif_ip_info_t info;
+    if (!n || esp_netif_get_ip_info(n, &info) != ESP_OK || !info.ip.addr) return false;
+    return (addr & info.netmask.addr) == (info.ip.addr & info.netmask.addr);
+}
+
+net_link_t net_link_to(const char *host, char *ip, size_t n_ip)
+{
+    bool lan = use_eth() && eth_has_ip, wifi = use_wifi() && sta_has_ip;
+    net_link_t l = net_get_link();
+    uint32_t addr = host ? ipaddr_addr(host) : IPADDR_NONE;
+    if (addr != IPADDR_NONE) {
+        if (wifi && same_subnet(netif_sta, addr))     l = NET_LINK_WIFI;
+        else if (lan && same_subnet(netif_eth, addr)) l = NET_LINK_LAN;
+    }
+    if (ip) {
+        portENTER_CRITICAL(&lock);
+        snprintf(ip, n_ip, "%s", l == NET_LINK_LAN ? ip_eth : l == NET_LINK_WIFI ? ip_sta : "");
+        portEXIT_CRITICAL(&lock);
+    }
+    return l;
 }
 
 void net_start(void)
@@ -454,9 +573,12 @@ void net_start(void)
     } else {
         ESP_LOGI(TAG, "Chua co WiFi da luu (%s) -> OFFLINE", FILE_WIFI);
     }
+    link_mode = device_get_control_mode();
+    ESP_LOGI(TAG, "Che do mang: %s (%s)", control_mode_name(link_mode), net_link_mode_name());
     set_state(NET_OFFLINE);
     ESP_ERROR_CHECK(esp_wifi_start());
     eth_start();
+    start_mode_worker(true);
 }
 
 void net_config_start(void)
@@ -465,7 +587,7 @@ void net_config_start(void)
     config_active = true;
     esp_timer_stop(retry_timer);
     ESP_LOGI(TAG, "Bat che do cau hinh (AP %s)%s", ap_name,
-             sta_has_ip ? " - van giu ket noi WiFi hien tai" : "");
+             net_get_link() != NET_LINK_NONE ? " - van giu ket noi hien tai" : "");
     if (!sta_has_ip) esp_wifi_disconnect();
 
     wifi_config_t w = {0};
@@ -494,5 +616,5 @@ void net_config_stop(void)
     net_state_t t = normal_state();
     ESP_LOGI(TAG, "Tat che do cau hinh (tat AP) -> ve trang thai hien tai: %s", net_state_name(t));
     set_state(t);
-    if (!sta_has_ip && has_saved_wifi) esp_wifi_connect();
+    if (!sta_has_ip && has_saved_wifi && use_wifi()) esp_wifi_connect();
 }

@@ -16,7 +16,8 @@ ESP-IDF v5.5 + FreeRTOS. Màn hình HMI (LT7689) qua UART2, mạch động cơ C
 | RJ45 | 0, 16, 18, 19, 21-23, 25-27 | LAN (LAN8720), các chân này không dùng cho việc khác |
 
 Nạp lần đầu qua mạch nạp USB; sau đó nạp qua web (tab Upload) hoặc ThingsBoard OTA.
-Mạng: cắm dây LAN có DHCP -> dùng LAN (ưu tiên); không có LAN -> WiFi đã lưu.
+Mạng theo chế độ trang 74710: MODE WIFI chỉ dùng WiFi đã lưu, MODE LAN chỉ dùng LAN (DHCP), MODE LOCAL dùng cả hai
+(LAN ưu tiên, rút dây thì dùng WiFi).
 
 ## Cấu trúc
 
@@ -69,8 +70,8 @@ Mỗi page nhận sự kiện thì đưa vào hàng đợi của mình rồi tr�
 
 | Mật khẩu | Trang | Nội dung |
 |---|---|---|
-| 74700 | 0027 | WiFi: OFFLINE / ONLINE → Configuration WIFI (AP + web) |
-| 74710 | 0028 | MODE WIFI (phải ONLINE mới cho động cơ chạy) / MODE LOCAL (không cần mạng) |
+| 74700 | 0027 | ONLINE = đang nối được server ThingsBoard (MQTT), không thì OFFLINE; bấm → Configuration WIFI (AP + web) |
+| 74710 | 0028 | Bấm đổi vòng MODE WIFI (chỉ WiFi) → MODE LAN (chỉ LAN) → MODE LOCAL (LAN + WiFi). WIFI / LAN: phải có mạng mới cho động cơ chạy (ERR.01); LOCAL: không cần mạng |
 | 74766 | 0029 | Accès libre-service (không quan tâm thẻ) / Accès badgeuse (phải có thẻ), trạng thái thẻ; ngôn ngữ FR → EN → ES → IT → DE → PT (lưu settings.json) |
 | 200816 | 0030 | Mode 1..5 (thanh ghi 8 CM8), Card / Sismo Timer, Motor ratio 2..17 (thanh ghi 9), MANUAL 5' / 90' |
 

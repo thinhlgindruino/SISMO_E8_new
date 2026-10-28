@@ -31,7 +31,8 @@
  * -> shared attributes fw_title / fw_version / fw_size / fw_checksum (SHA256) -> máy kéo từng khúc
  * CLOUD_FW_CHUNK byte qua v2/fw/request/{id}/chunk/{n}, ghi bằng component ota, kiểm SHA-256, chờ máy rảnh
  * rồi khởi động lại. Bản mới chạy ổn định (ota tự xác nhận) -> lần kết nối sau báo UPDATED; bị quay về bản cũ
- * -> báo FAILED và không tự tải lại gói đó (trừ khi khách chọn lại).
+ * -> báo FAILED và không tự tải lại gói đó (trừ khi khách chọn lại). Máy được nạp tay bản khác sau khi đã OTA xong
+ * một gói -> không tự tải lại gói cũ đó (ThingsBoard vẫn gán gói cũ cho tới khi khách chọn gói khác).
  */
 #pragma once
 #include <stdbool.h>
